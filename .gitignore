@@ -1,0 +1,36 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# AppData
+AppData/
+
+# Temp output
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+build/
+dist/
+*.spec
+*.pyz
+*.pyd
+*.pyw
+*.pyz
+*.pyd
+*.pyw
+*.pyz
+*.pyd
+*.pyw

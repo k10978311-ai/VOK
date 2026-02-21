@@ -1,0 +1,30 @@
+[project]
+name = "vok"
+version = "0.1.0"
+description = "Scail Media video downloader and content scraper - download videos and scrape video metadata/content"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "PyQt5>=5.15.0",
+    "PyQt-Fluent-Widgets>=1.8.4",
+    "yt-dlp>=2024.1.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "playwright>=1.40.0",
+    "aiohttp>=3.9.0",
+    "python-dotenv>=1.0.0",
+    "pillow>=11.3.0",
+    "apscheduler>=3.11.2"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+# Resolve for Windows only so PyQt5 gets a Windows wheel (pyqt5-qt5 has no win wheel in some versions)
+required-environments = ["sys_platform == 'win32'"]
