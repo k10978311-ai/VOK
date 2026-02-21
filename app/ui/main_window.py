@@ -3,13 +3,13 @@ from qfluentwidgets import FluentIcon, FluentWindow, NavigationItemPosition
 
 from app.common.paths import PROJECT_ROOT
 
-from .views import DashboardView, DownloaderView, LogsView, SettingsView
+from .views import DashboardView, DownloaderView, LogsView, ScraperView, SettingsView
 
-APP_TITLE = "VOK — Download"
+APP_TITLE = "VOK — Download & Analytics"
 
 
 class MainWindow(FluentWindow):
-    """Fluent-style window with download tools."""
+    """Fluent-style window with download and analytics tools."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -17,11 +17,13 @@ class MainWindow(FluentWindow):
 
         self.dashboard = DashboardView(self)
         self.downloader = DownloaderView(self)
+        self.scraper = ScraperView(self)
         self.logs = LogsView(self)
         self.settings = SettingsView(self)
 
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Dashboard")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
+        self.addSubInterface(self.scraper, FluentIcon.SEARCH, "Analytics")
         self.addSubInterface(self.logs, FluentIcon.FOLDER, "Logs")
         self.navigationInterface.addSeparator()
         self.addSubInterface(
