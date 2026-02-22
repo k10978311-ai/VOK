@@ -60,6 +60,19 @@ def _strip_ansi(text: str) -> str:
     return ANSI_RE.sub("", text)
 
 
+def _format_size(size_bytes: int) -> str:
+    """Format byte count as human-readable (e.g. 1.5 MB). Returns '—' if size_bytes < 0."""
+    if size_bytes < 0:
+        return "—"
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size_bytes < 1024:
+            if unit == "B":
+                return f"{int(size_bytes)} B"
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} PB"
+
+
 class DownloaderView(BaseView):
     """Multi-job downloader: single URL, bulk URL list, and selective playlist download."""
 
@@ -243,14 +256,18 @@ class DownloaderView(BaseView):
         lay.addLayout(hdr)
 
         self._process_table = TableWidget(card)
-        self._process_table.setColumnCount(4)
-        self._process_table.setHorizontalHeaderLabels(["Time", "Status", "Message", "Progress"])
+        self._process_table.setColumnCount(6)
+        self._process_table.setHorizontalHeaderLabels(
+            ["Time", "Status", "Message", "Path", "Size", "Progress"]
+        )
         hdr_view = self._process_table.horizontalHeader()
         hdr_view.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hdr_view.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         hdr_view.setSectionResizeMode(2, QHeaderView.Stretch)
-        hdr_view.setSectionResizeMode(3, QHeaderView.Fixed)
-        self._process_table.setColumnWidth(3, 140)
+        hdr_view.setSectionResizeMode(3, QHeaderView.Stretch)
+        hdr_view.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        hdr_view.setSectionResizeMode(5, QHeaderView.Fixed)
+        self._process_table.setColumnWidth(5, 140)
         self._process_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._process_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._process_table.setAlternatingRowColors(True)
@@ -334,7 +351,7 @@ class DownloaderView(BaseView):
                     job = DownloadJob(url=url, output_dir=out, format_key=fmt,
                                       single_video=True, cookies_file=cookies)
                     self._active_jobs.add(job.job_id)
-                    self._add_download_row(job.job_id, entry.get("title", url))
+                    self._add_download_row(job.job_id, entry.get("title", url), out)
                     self._manager.enqueue(job)
                     queued += 1
         if queued:
@@ -345,20 +362,22 @@ class DownloaderView(BaseView):
 
     # ── Download table helpers ─────────────────────────────────────────────
 
-    def _add_download_row(self, job_id: str, message: str) -> None:
-        """Add a row for a new download job with a progress bar."""
+    def _add_download_row(self, job_id: str, message: str, output_dir: str = "") -> None:
+        """Add a row for a new download job with a progress bar. Path shows output_dir until finished."""
         row = self._process_table.rowCount()
         self._process_table.insertRow(row)
         time_str = datetime.now().strftime("%H:%M:%S")
         self._process_table.setItem(row, 0, QTableWidgetItem(time_str))
         self._process_table.setItem(row, 1, QTableWidgetItem("Downloading"))
         self._process_table.setItem(row, 2, QTableWidgetItem(message[:200] or job_id[:200]))
+        self._process_table.setItem(row, 3, QTableWidgetItem(output_dir or "—"))
+        self._process_table.setItem(row, 4, QTableWidgetItem("—"))
         bar = ProgressBar(self._process_table)
         bar.setRange(0, 100)
         bar.setValue(0)
         bar.setFixedHeight(20)
         bar.setFixedWidth(120)
-        self._process_table.setCellWidget(row, 3, bar)
+        self._process_table.setCellWidget(row, 5, bar)
         self._job_to_row[job_id] = row
         self._process_table.scrollToBottom()
 
@@ -385,6 +404,9 @@ class DownloaderView(BaseView):
             msg_item = self._process_table.item(row, 2)
             if msg_item:
                 msg_item.setText(clean[:500] if len(clean) > 500 else clean)
+
+    def _progress_col(self) -> int:
+        return 5
 
     def _log_append(self, text: str) -> None:
         """Append a generic log line (e.g. from playlist preview); no job row."""
@@ -426,7 +448,7 @@ class DownloaderView(BaseView):
                 job = DownloadJob(url=url, output_dir=out, format_key=fmt,
                                   single_video=True, cookies_file=cookies)
                 self._active_jobs.add(job.job_id)
-                self._add_download_row(job.job_id, url)
+                self._add_download_row(job.job_id, url, out)
                 self._manager.enqueue(job)
         else:
             url = self._url_edit.text().strip()
@@ -441,7 +463,7 @@ class DownloaderView(BaseView):
                 cookies_file=cookies,
             )
             self._active_jobs.add(job.job_id)
-            self._add_download_row(job.job_id, url)
+            self._add_download_row(job.job_id, url, out)
             self._manager.enqueue(job)
 
         self._progress_indet.setVisible(True)
@@ -458,7 +480,7 @@ class DownloaderView(BaseView):
             self._progress.setValue(int(value * 100))
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
-            bar = self._process_table.cellWidget(row, 3)
+            bar = self._process_table.cellWidget(row, self._progress_col())
             if isinstance(bar, ProgressBar):
                 bar.setRange(0, 100)
                 bar.setValue(int(value * 100))
@@ -467,7 +489,9 @@ class DownloaderView(BaseView):
         self._manager.cancel_all()
         self._log_append("Cancelling all active downloads…")
 
-    def _on_job_finished(self, job_id: str, success: bool, message: str) -> None:
+    def _on_job_finished(
+        self, job_id: str, success: bool, message: str, filepath: str, size_bytes: int
+    ) -> None:
         self._active_jobs.discard(job_id)
         add_log_entry("info" if success else "error", message)
         row = self._job_to_row.get(job_id)
@@ -478,7 +502,13 @@ class DownloaderView(BaseView):
             msg_item = self._process_table.item(row, 2)
             if msg_item:
                 msg_item.setText(message[:500] if len(message) > 500 else message)
-            bar = self._process_table.cellWidget(row, 3)
+            path_item = self._process_table.item(row, 3)
+            if path_item and filepath:
+                path_item.setText(filepath)
+            size_item = self._process_table.item(row, 4)
+            if size_item:
+                size_item.setText(_format_size(size_bytes))
+            bar = self._process_table.cellWidget(row, self._progress_col())
             if isinstance(bar, ProgressBar):
                 bar.setRange(0, 100)
                 bar.setValue(100 if success else 0)

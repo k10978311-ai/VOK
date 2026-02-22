@@ -32,8 +32,14 @@ def get_config_dir() -> Path:
     return PROJECT_ROOT
 
 
+# Subfolder under user's Downloads used when no custom path is set
+VOK_VIDEO_SUBFOLDER = "Vok_Video"
+
+
 def get_default_downloads_dir() -> Path:
-    """Default download folder: user's Downloads when frozen, else project downloads."""
-    if getattr(sys, "frozen", False):
-        return Path.home() / "Downloads"
-    return DOWNLOADS_DIR
+    """Default download folder: user's Downloads\\Vok_Video (created if missing).
+    Used on first start and whenever no download_path is set.
+    """
+    path = Path.home() / "Downloads" / VOK_VIDEO_SUBFOLDER
+    path.mkdir(parents=True, exist_ok=True)
+    return path

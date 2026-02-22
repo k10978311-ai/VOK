@@ -1,5 +1,6 @@
 """First-run setup wizard: theme and download path."""
 
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -16,11 +17,14 @@ from qfluentwidgets import (
     LineEdit,
     PrimaryPushButton,
     PushButton,
+    Theme,
     TitleLabel,
+    setTheme,
+    setThemeColor,
 )
 
 from app.common.paths import get_default_downloads_dir
-from app.config import save_settings
+from app.config import load_settings, save_settings
 
 _THEME_OPTIONS = ["Auto", "Light", "Dark"]
 
@@ -30,6 +34,10 @@ class SetupWizardDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Use light theme for this dialog: light background, dark text
+        s = load_settings()
+        setTheme(Theme.LIGHT)
+        setThemeColor(QColor(s.get("theme_color", "#0078D4")))
         self.setWindowTitle("Welcome to VOK")
         self.setMinimumSize(500, 340)
         self.setMinimumWidth(480)

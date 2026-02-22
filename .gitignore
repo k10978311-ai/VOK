@@ -24,7 +24,6 @@ Thumbs.db
 
 build/
 dist/
-*.spec
 *.pyz
 *.pyd
 *.pyw
@@ -36,3 +35,5 @@ dist/
 *.pyw
 
 downloads
+
+vok_setting.json

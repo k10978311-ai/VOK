@@ -23,6 +23,10 @@ dev = [
     "pyinstaller>=6.0.0",
     "ruff>=0.8.0",
 ]
+# TikTok and other sites: enables browser impersonation (pip install "yt-dlp[curl-cffi]" or uv sync --extra tiktok)
+tiktok = [
+    "yt-dlp[curl-cffi]",
+]
 
 [build-system]
 requires = ["hatchling"]

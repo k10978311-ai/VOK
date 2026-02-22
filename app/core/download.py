@@ -11,12 +11,32 @@ ok.ru private videos) pass a Netscape-format cookies file via `cookies_file`.
 
 import os
 import re
+import shutil
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from app.common.paths import DOWNLOADS_DIR
+from app.common.paths import get_default_downloads_dir
+
+
+def _ffmpeg_available() -> bool:
+    """True if ffmpeg is on PATH (needed for merging video+audio)."""
+    return shutil.which("ffmpeg") is not None
+
+
+def _impersonate_available() -> bool:
+    """True if curl_cffi is available so yt-dlp can use impersonation (e.g. for TikTok)."""
+    try:
+        import curl_cffi  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+# Emit ffmpeg / impersonation hints only once per session to avoid log spam
+_ffmpeg_hint_shown: bool = False
+_impersonate_hint_shown: bool = False
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -126,7 +146,7 @@ class DownloadWorker(QThread):
 
     log_line = pyqtSignal(str)
     progress = pyqtSignal(float)
-    finished_signal = pyqtSignal(bool, str)
+    finished_signal = pyqtSignal(bool, str, str, int)  # success, message, filepath, size_bytes (-1 if unknown)
 
     def __init__(
         self,
@@ -141,13 +161,15 @@ class DownloadWorker(QThread):
     ):
         super().__init__(parent)
         self.url = url.strip()
-        self.output_dir = output_dir or str(DOWNLOADS_DIR)
+        self.output_dir = output_dir or str(get_default_downloads_dir())
         self.format_key = format_key
         self.single_video = single_video
         self.concurrent_fragments = max(1, min(16, int(concurrent_fragments)))
         self.cookies_file = cookies_file.strip() if cookies_file else ""
         self.job_id = job_id or url[:80]
         self._cancelled = False
+        self._final_path = ""
+        self._final_size = -1
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -196,6 +218,13 @@ class DownloadWorker(QThread):
                     self.progress.emit(done / total)
             elif status == "finished":
                 self.progress.emit(1.0)
+                filename = d.get("filename")
+                if filename and os.path.isfile(filename):
+                    self._final_path = filename
+                    try:
+                        self._final_size = os.path.getsize(filename)
+                    except OSError:
+                        self._final_size = -1
 
         def log_emit(msg: str):
             self.log_line.emit(_strip_ansi(msg))
@@ -206,8 +235,32 @@ class DownloadWorker(QThread):
 
             def debug(self, msg): self._emit(msg)
             def info(self, msg): self._emit(msg)
-            def warning(self, msg): self._emit(f"[warning] {msg}")
+
+            def warning(self, msg: str) -> None:
+                global _impersonate_hint_shown
+                m = msg.lower()
+                if "impersonation" in m and "no impersonate target" in m:
+                    if not _impersonate_hint_shown:
+                        _impersonate_hint_shown = True
+                        self._emit(
+                            "[info] TikTok: for best compatibility install curl_cffi: "
+                            'pip install "yt-dlp[curl-cffi]"'
+                        )
+                    return
+                self._emit(f"[warning] {msg}")
+
             def error(self, msg): self._emit(f"[error] {msg}")
+
+        # If chosen format requires merging but ffmpeg is missing, use single-stream fallback
+        global _ffmpeg_hint_shown
+        if "+" in fkey and not _ffmpeg_available():
+            if not _ffmpeg_hint_shown:
+                _ffmpeg_hint_shown = True
+                log_emit(
+                    "[warning] ffmpeg is not installed; merging video+audio is unavailable. "
+                    "Using best single stream. Install ffmpeg for best quality."
+                )
+            fkey = "best/b"
 
         opts: dict = {
             "outtmpl": out_tmpl,
@@ -221,6 +274,13 @@ class DownloadWorker(QThread):
             "fragment_retries": 5,
             "concurrent_fragment_downloads": self.concurrent_fragments,
         }
+
+        # Use browser impersonation when available (helps TikTok and other sites)
+        if _impersonate_available():
+            try:
+                opts["impersonate"] = "chrome"
+            except Exception:
+                pass
 
         if self.cookies_file and os.path.isfile(self.cookies_file):
             opts["cookiefile"] = self.cookies_file
@@ -241,11 +301,13 @@ class DownloadWorker(QThread):
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
             if self._cancelled:
-                self.finished_signal.emit(False, "Cancelled.")
+                self.finished_signal.emit(False, "Cancelled.", "", -1)
             else:
-                self.finished_signal.emit(True, "Download completed.")
+                self.finished_signal.emit(
+                    True, "Download completed.", self._final_path, self._final_size
+                )
         except yt_dlp.utils.DownloadCancelled:
-            self.finished_signal.emit(False, "Cancelled.")
+            self.finished_signal.emit(False, "Cancelled.", "", -1)
         except Exception as exc:
             log_emit(str(exc))
-            self.finished_signal.emit(False, str(exc))
+            self.finished_signal.emit(False, str(exc), "", -1)
