@@ -1,18 +1,14 @@
 """Downloader view: single, bulk, and selective download with HD/4K/Photo formats."""
 
-import re
 from datetime import datetime
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QTableWidgetItem,
     QVBoxLayout,
-    QWidget,
 )
 from qfluentwidgets import (
     BodyLabel,
@@ -25,8 +21,6 @@ from qfluentwidgets import (
     ProgressBar,
     PrimaryPushButton,
     PushButton,
-    StrongBodyLabel,
-    SubtitleLabel,
     SwitchButton,
     TableWidget,
 )
@@ -34,43 +28,14 @@ from qfluentwidgets import (
 from app.common.paths import get_default_downloads_dir
 from app.common.state import add_log_entry
 from app.config import load_settings
-from app.core.download import SUPPORTED_DOMAINS
+from app.core.download import detect_platform
 from app.core.manager import DownloadJob, DownloadManager
 from app.core.scraper import PlaylistFetchWorker, fmt_duration, fmt_date
-from app.ui.components import CardHeader
+from app.ui.components import CardHeader, DownloadTableCard
+from app.ui.helpers import DOWNLOAD_FORMATS, host_icon
+from app.ui.utils import format_size, strip_ansi
 
 from .base import BaseView
-
-ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
-
-_FORMATS = [
-    "Best (video+audio)",
-    "HD 1080p",
-    "HD 720p",
-    "4K / 2160p",
-    "Best video",
-    "Best audio",
-    "Video (mp4)",
-    "Audio (mp3)",
-    "Photo / Image",
-]
-
-
-def _strip_ansi(text: str) -> str:
-    return ANSI_RE.sub("", text)
-
-
-def _format_size(size_bytes: int) -> str:
-    """Format byte count as human-readable (e.g. 1.5 MB). Returns '—' if size_bytes < 0."""
-    if size_bytes < 0:
-        return "—"
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if size_bytes < 1024:
-            if unit == "B":
-                return f"{int(size_bytes)} B"
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} PB"
 
 
 class DownloaderView(BaseView):
@@ -86,6 +51,7 @@ class DownloaderView(BaseView):
         self._manager.job_finished.connect(self._on_job_finished)
         self._active_jobs: set[str] = set()
         self._job_to_row: dict[str, int] = {}
+        self._job_progress: dict[str, float] = {}  # job_id -> 0.0..1.0 for overall header bar
         self._playlist_worker: PlaylistFetchWorker | None = None
 
         self._build_url_card()
@@ -215,7 +181,7 @@ class DownloaderView(BaseView):
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(BodyLabel("Format", card))
         self._format_combo = ComboBox(card)
-        self._format_combo.addItems(_FORMATS)
+        self._format_combo.addItems(DOWNLOAD_FORMATS)
         fmt_row.addWidget(self._format_combo)
         fmt_row.addStretch(1)
         self._jobs_label = BodyLabel("", card)
@@ -233,47 +199,27 @@ class DownloaderView(BaseView):
         self._layout.addWidget(card)
 
     def _build_progress(self):
+        progress_row = QHBoxLayout()
         self._progress_indet = IndeterminateProgressBar(self)
         self._progress_indet.setVisible(False)
-        self._layout.addWidget(self._progress_indet)
+        progress_row.addWidget(self._progress_indet, 1)
 
         self._progress = ProgressBar(self)
         self._progress.setVisible(False)
-        self._layout.addWidget(self._progress)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        progress_row.addWidget(self._progress, 1)
+
+        self._progress_pct_label = BodyLabel("0%", self)
+        self._progress_pct_label.setVisible(False)
+        self._progress_pct_label.setMinimumWidth(40)
+        progress_row.addWidget(self._progress_pct_label)
+        self._layout.addLayout(progress_row)
 
     def _build_log_card(self):
-        card = CardWidget(self)
-        lay = QVBoxLayout(card)
-        lay.setSpacing(10)
-
-        hdr = QHBoxLayout()
-        hdr.addWidget(CardHeader(FluentIcon.HISTORY, "Download Table", card))
-        hdr.addStretch(1)
-        clear_btn = PushButton("Clear", card)
-        clear_btn.setIcon(FluentIcon.DELETE)
-        clear_btn.clicked.connect(self._clear_download_table)
-        hdr.addWidget(clear_btn)
-        lay.addLayout(hdr)
-
-        self._process_table = TableWidget(card)
-        self._process_table.setColumnCount(6)
-        self._process_table.setHorizontalHeaderLabels(
-            ["Time", "Status", "Message", "Path", "Size", "Progress"]
-        )
-        hdr_view = self._process_table.horizontalHeader()
-        hdr_view.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(2, QHeaderView.Stretch)
-        hdr_view.setSectionResizeMode(3, QHeaderView.Stretch)
-        hdr_view.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(5, QHeaderView.Fixed)
-        self._process_table.setColumnWidth(5, 140)
-        self._process_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._process_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._process_table.setAlternatingRowColors(True)
-        self._process_table.verticalHeader().setVisible(False)
-        self._process_table.setMinimumHeight(220)
-        lay.addWidget(self._process_table)
+        card = DownloadTableCard(self)
+        card.clear_btn.clicked.connect(self._clear_download_table)
+        self._process_table = card.table
         self._layout.addWidget(card)
 
     # ── Mode toggles ──────────────────────────────────────────────────────
@@ -351,34 +297,45 @@ class DownloaderView(BaseView):
                     job = DownloadJob(url=url, output_dir=out, format_key=fmt,
                                       single_video=True, cookies_file=cookies)
                     self._active_jobs.add(job.job_id)
-                    self._add_download_row(job.job_id, entry.get("title", url), out)
+                    self._add_download_row(
+                        job.job_id, entry.get("title", url), out, url=url
+                    )
                     self._manager.enqueue(job)
                     queued += 1
         if queued:
             add_log_entry("info", f"Queued {queued} selected item(s) for download.")
             self._progress_indet.setVisible(True)
             self._progress.setVisible(False)
+            self._progress_pct_label.setVisible(False)
             self._update_controls()
 
     # ── Download table helpers ─────────────────────────────────────────────
 
-    def _add_download_row(self, job_id: str, message: str, output_dir: str = "") -> None:
+    def _add_download_row(
+        self, job_id: str, message: str, output_dir: str = "", url: str = ""
+    ) -> None:
         """Add a row for a new download job with a progress bar. Path shows output_dir until finished."""
         row = self._process_table.rowCount()
         self._process_table.insertRow(row)
         time_str = datetime.now().strftime("%H:%M:%S")
         self._process_table.setItem(row, 0, QTableWidgetItem(time_str))
-        self._process_table.setItem(row, 1, QTableWidgetItem("Downloading"))
-        self._process_table.setItem(row, 2, QTableWidgetItem(message[:200] or job_id[:200]))
-        self._process_table.setItem(row, 3, QTableWidgetItem(output_dir or "—"))
-        self._process_table.setItem(row, 4, QTableWidgetItem("—"))
+        platform = detect_platform(url) if url else "Unknown"
+        host_item = QTableWidgetItem()
+        host_item.setIcon(host_icon(platform))
+        host_item.setToolTip(platform)
+        self._process_table.setItem(row, 1, host_item)
+        self._process_table.setItem(row, 2, QTableWidgetItem("Downloading"))
+        self._process_table.setItem(row, 3, QTableWidgetItem(message[:200] or job_id[:200]))
+        self._process_table.setItem(row, 4, QTableWidgetItem(output_dir or "—"))
+        self._process_table.setItem(row, 5, QTableWidgetItem("—"))
         bar = ProgressBar(self._process_table)
         bar.setRange(0, 100)
         bar.setValue(0)
         bar.setFixedHeight(20)
         bar.setFixedWidth(120)
-        self._process_table.setCellWidget(row, 5, bar)
+        self._process_table.setCellWidget(row, 6, bar)
         self._job_to_row[job_id] = row
+        self._job_progress[job_id] = 0.0
         self._process_table.scrollToBottom()
 
     def _clear_download_table(self) -> None:
@@ -386,7 +343,7 @@ class DownloaderView(BaseView):
         self._job_to_row.clear()
 
     def _on_job_log(self, job_id: str, text: str) -> None:
-        clean = _strip_ansi(text.strip())
+        clean = strip_ansi(text.strip())
         if not clean:
             return
         tl = clean.lower()
@@ -401,16 +358,16 @@ class DownloaderView(BaseView):
         add_log_entry(status, clean)
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
-            msg_item = self._process_table.item(row, 2)
+            msg_item = self._process_table.item(row, 3)
             if msg_item:
                 msg_item.setText(clean[:500] if len(clean) > 500 else clean)
 
     def _progress_col(self) -> int:
-        return 5
+        return 6
 
     def _log_append(self, text: str) -> None:
         """Append a generic log line (e.g. from playlist preview); no job row."""
-        clean = _strip_ansi(text.strip())
+        clean = strip_ansi(text.strip())
         if not clean:
             return
         tl = clean.lower()
@@ -448,7 +405,7 @@ class DownloaderView(BaseView):
                 job = DownloadJob(url=url, output_dir=out, format_key=fmt,
                                   single_video=True, cookies_file=cookies)
                 self._active_jobs.add(job.job_id)
-                self._add_download_row(job.job_id, url, out)
+                self._add_download_row(job.job_id, url, out, url=url)
                 self._manager.enqueue(job)
         else:
             url = self._url_edit.text().strip()
@@ -463,27 +420,39 @@ class DownloaderView(BaseView):
                 cookies_file=cookies,
             )
             self._active_jobs.add(job.job_id)
-            self._add_download_row(job.job_id, url, out)
+            self._add_download_row(job.job_id, url, out, url=job.url)
             self._manager.enqueue(job)
 
         self._progress_indet.setVisible(True)
         self._progress.setVisible(False)
+        self._progress_pct_label.setVisible(False)
         self._update_controls()
+
+    def _update_header_progress(self) -> None:
+        """Update header progress bar and percentage label from all active jobs."""
+        if not self._job_progress:
+            return
+        total = sum(self._job_progress.values())
+        n = len(self._job_progress)
+        pct = int((total / n) * 100) if n else 0
+        self._progress.setRange(0, 100)
+        self._progress.setValue(min(100, pct))
+        self._progress_pct_label.setText(f"{pct}%")
 
     def _on_progress(self, job_id: str, value: float) -> None:
         self._progress_indet.setVisible(False)
         self._progress.setVisible(True)
-        if value < 0:
-            self._progress.setRange(0, 0)
-        else:
-            self._progress.setRange(0, 100)
-            self._progress.setValue(int(value * 100))
+        self._progress_pct_label.setVisible(True)
+        # Store this job's progress (0 for indeterminate)
+        self._job_progress[job_id] = max(0.0, min(1.0, value)) if value >= 0 else 0.0
+        self._update_header_progress()
+        # Update this row's bar
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
             bar = self._process_table.cellWidget(row, self._progress_col())
             if isinstance(bar, ProgressBar):
                 bar.setRange(0, 100)
-                bar.setValue(int(value * 100))
+                bar.setValue(int((value if value >= 0 else 0) * 100))
 
     def _stop_all(self):
         self._manager.cancel_all()
@@ -493,21 +462,22 @@ class DownloaderView(BaseView):
         self, job_id: str, success: bool, message: str, filepath: str, size_bytes: int
     ) -> None:
         self._active_jobs.discard(job_id)
+        self._job_progress.pop(job_id, None)
         add_log_entry("info" if success else "error", message)
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
-            status_item = self._process_table.item(row, 1)
+            status_item = self._process_table.item(row, 2)
             if status_item:
                 status_item.setText("Done" if success else "Error")
-            msg_item = self._process_table.item(row, 2)
+            msg_item = self._process_table.item(row, 3)
             if msg_item:
                 msg_item.setText(message[:500] if len(message) > 500 else message)
-            path_item = self._process_table.item(row, 3)
+            path_item = self._process_table.item(row, 4)
             if path_item and filepath:
                 path_item.setText(filepath)
-            size_item = self._process_table.item(row, 4)
+            size_item = self._process_table.item(row, 5)
             if size_item:
-                size_item.setText(_format_size(size_bytes))
+                size_item.setText(format_size(size_bytes))
             bar = self._process_table.cellWidget(row, self._progress_col())
             if isinstance(bar, ProgressBar):
                 bar.setRange(0, 100)
@@ -515,4 +485,7 @@ class DownloaderView(BaseView):
         if not self._active_jobs:
             self._progress_indet.setVisible(False)
             self._progress.setVisible(False)
+            self._progress_pct_label.setVisible(False)
+        else:
+            self._update_header_progress()
         self._update_controls()

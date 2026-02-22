@@ -103,7 +103,14 @@ class DownloadManager(QObject):
             w.cancel()
 
     def cancel_all(self) -> None:
+        """Cancel all running jobs and clear the queue so no further jobs start."""
         self._stop = True
+        # Drain queue so no new jobs start after we cancel running ones
+        while True:
+            try:
+                self._queue.get_nowait()
+            except Empty:
+                break
         for w in list(self._running.values()):
             w.cancel()
         self._stop = False
