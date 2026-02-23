@@ -13,7 +13,7 @@ import os
 import re
 import shutil
 from typing import Callable
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from PyQt5.QtCore import QThread, pyqtSignal
 

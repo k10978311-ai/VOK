@@ -2,14 +2,13 @@
 
 import sys
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import Theme, setTheme, setThemeColor, FluentIcon, SplashScreen
 
 from app.common.paths import PROJECT_ROOT
-from app.config import is_first_run, load_settings
-from app.ui.dialogs import SetupWizardDialog
+from app.config import load_settings
 from app.ui.main_window import MainWindow
 
 _THEME_MAP = {"Auto": Theme.AUTO, "Light": Theme.LIGHT, "Dark": Theme.DARK}
@@ -40,15 +39,9 @@ def main() -> int:
     splash.show()
     app.processEvents()
 
-    if is_first_run():
-        splash.finish()
-        setup = SetupWizardDialog()
-        setup.exec_()
-        s = load_settings()
-        setTheme(_THEME_MAP.get(s.get("theme", "Dark"), Theme.DARK))
-        setThemeColor(QColor(s.get("theme_color", "#0078D4")))
-
-    splash.finish()
+    # Close splash after a short delay. Avoid splash.finish() — its animation
+    # uses a ProgressBar and can trigger SIGABRT on macOS (PyQt5/Qt animation bug).
+    QTimer.singleShot(1000, splash.close)
 
     return app.exec_()
 
