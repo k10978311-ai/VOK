@@ -39,8 +39,6 @@ def main() -> int:
     splash.show()
     app.processEvents()
 
-    # Close splash after a short delay. Avoid splash.finish() — its animation
-    # uses a ProgressBar and can trigger SIGABRT on macOS (PyQt5/Qt animation bug).
     QTimer.singleShot(1000, splash.close)
 
     return app.exec_()

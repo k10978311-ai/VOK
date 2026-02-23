@@ -96,38 +96,6 @@ Users still need **FFmpeg** installed for audio/video merging.
 
 ---
 
-## Project Structure
-
-```
-VOK/
-├── app/
-│   ├── common/
-│   │   ├── paths.py          # Path constants
-│   │   └── state.py          # In-memory log buffer & recent downloads
-│   ├── config/
-│   │   └── store.py          # JSON settings persistence
-│   ├── core/
-│   │   ├── download.py       # yt-dlp download worker (QThread)
-│   │   ├── manager.py        # Parallel download manager
-│   │   └── scraper.py        # Analytics workers (metadata, comments, search, translate)
-│   └── ui/
-│       ├── main_window.py    # FluentWindow with navigation
-│       ├── components/       # Reusable widgets (CardHeader, StatusTable)
-│       └── views/
-│           ├── dashboard.py  # Recent downloads overview
-│           ├── downloader.py # Download tab (single / bulk / selective)
-│           ├── scraper.py    # Analytics tab (stats / comments / search / translate)
-│           ├── logs.py       # Application log viewer
-│           └── settings.py  # App settings
-├── resources/
-│   └── icons/
-├── scripts/
-├── run.py                    # Entry point
-└── pyproject.toml
-```
-
----
-
 ## Configuration
 
 Settings are stored in `vok_settings.json` in the project root. You can change them from the **Settings** tab inside the app.
@@ -200,6 +168,19 @@ Paste any video URL and click **Fetch Stats** to see views, likes, comments coun
 | `aiohttp` | Async HTTP |
 | `Pillow` | Image processing |
 | `apscheduler` | Task scheduling |
+
+---
+
+## Dependency updates (auto)
+
+- **GitHub**: Dependabot is enabled (`.github/dependabot.yml`) and will open weekly PRs for dependency updates. Review and merge as needed.
+- **Local**: From the project root, refresh the lockfile and upgrade all deps:
+  ```bash
+  uv lock --upgrade && uv sync
+  ```
+  Or run:
+  - Windows: `scripts\update-deps.bat`
+  - Unix: `./scripts/update-deps.sh`
 
 ---
 

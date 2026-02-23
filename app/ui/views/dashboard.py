@@ -1,24 +1,34 @@
-"""Dashboard view: welcome and how-to for video download users."""
+"""
+Dashboard view: welcome and info tools for video download users.
+"""
 
 import os
 import platform
 import subprocess
-import webbrowser
 from pathlib import Path
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
+from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QVBoxLayout
+
+try:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings
+    _HAS_WEBENGINE = True
+except ImportError:
+    QWebEngineView = None
+    QWebEngineSettings = None
+    _HAS_WEBENGINE = False
+
 from qfluentwidgets import (
     BodyLabel,
+    CaptionLabel,
     CardWidget,
     FluentIcon,
     LargeTitleLabel,
     PrimaryPushButton,
     PushButton,
     SubtitleLabel,
-    ToolTipFilter,
-    ToolTipPosition,
+    IconWidget,
 )
 
 from app.common.paths import INSTRUCTIONS_DIR
@@ -26,78 +36,127 @@ from app.config import load_settings
 
 from .base import BaseView
 
-# Replace with your tutorial video URL (YouTube, etc.)
-TUTORIAL_VIDEO_URL = "https://www.youtube.com/watch?v=mRD23Wdtr1M"
+# --- Constants ---
+TUTORIAL_VIDEO_ID = "QXL9TjHS2-I"
+TUTORIAL_VIDEO_URL = f"https://www.youtube.com/watch?v={TUTORIAL_VIDEO_ID}"
+TUTORIAL_WINDOW_TITLE = "Tutorial Video - របៀបប្រើ Tools Download Video"
+SECTION_SPACING = 24
+CARD_PADDING = 16
+FEATURE_ICON_SIZE = 32
+GRID_SPACING = 14
+
+FEATURE_TOOLS = (
+    ("Multi-Source Support", "Extract from 1000+ sites with ease.", FluentIcon.GLOBE),
+    ("Quality Selector", "Choose up to 4K resolution or MP3 audio.", FluentIcon.SETTING),
+    ("Batch Download", "Download entire playlists or multiple URLs.", FluentIcon.ADD),
+    ("Smart Naming", "Automatically organize files by title/author.", FluentIcon.EDIT),
+)
+
+HOW_TO_STEPS = (
+    "1. Copy a video URL from your browser.",
+    "2. Paste it into the 'Download' tab and select your format.",
+    "3. Click 'Download' and monitor the 'Logs' for status.",
+)
+
 
 
 class DashboardView(BaseView):
-    """Home view for users who download videos (YouTube, TikTok, etc.)."""
+    """Home view for users who download videos with Info Tools grid."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Dashboard")
+        self._build_ui()
 
-        self._title = LargeTitleLabel(self)
-        self._title.setText("Dashboard")
-        self._layout.addWidget(self._title)
+    def _build_ui(self):
+        """Build dashboard sections in order."""
+        self._add_header()
+        self._add_actions()
+        self._add_feature_grid()
+        self._add_instructions_card()
+        self._layout.addStretch(1)
 
-        self._subtitle = BodyLabel(self)
-        self._subtitle.setText(
-            "Download videos from YouTube, TikTok, Pinterest and 1000+ sites. "
-            "Use the Download tab to paste a URL and choose quality."
+    def _add_header(self):
+        """Title and subtitle."""
+        title = LargeTitleLabel("Video Toolbox", self)
+        self._layout.addWidget(title)
+
+        subtitle = BodyLabel(
+            "Download high-quality content from YouTube, TikTok, Pinterest, and 1000+ other platforms."
         )
-        self._subtitle.setWordWrap(True)
-        self._layout.addWidget(self._subtitle)
-        self._layout.addSpacing(16)
+        subtitle.setWordWrap(True)
+        self._layout.addWidget(subtitle)
+        self._layout.addSpacing(SECTION_SPACING)
 
-        btn_row = QHBoxLayout()
-        open_btn = PrimaryPushButton("Open download folder", self)
+    def _add_actions(self):
+        """Primary action buttons."""
+        row = QHBoxLayout()
+        open_btn = PrimaryPushButton("Open Downloads Folder", self)
         open_btn.setIcon(FluentIcon.FOLDER)
         open_btn.clicked.connect(self._open_download_folder)
-        btn_row.addWidget(open_btn)
-        btn_row.addStretch(1)
-        self._layout.addLayout(btn_row)
-        self._layout.addSpacing(24)
+        row.addWidget(open_btn)
+        row.addStretch(1)
+        self._layout.addLayout(row)
+        self._layout.addSpacing(SECTION_SPACING)
 
-        # ── How to use (instructions with optional images and video) ─────────
+    def _add_feature_grid(self):
+        """Grid of feature/tool cards."""
+        self._layout.addWidget(SubtitleLabel("Included Tools & Features"))
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 10, 0, 0)
+        grid.setSpacing(GRID_SPACING)
+
+        for i, (title, desc, icon) in enumerate(FEATURE_TOOLS):
+            grid.addWidget(
+                self._make_feature_card(title, desc, icon),
+                i // 2,
+                i % 2,
+            )
+
+        self._layout.addLayout(grid)
+        self._layout.addSpacing(SECTION_SPACING)
+
+
+    def _make_feature_card(self, title, desc, icon):
+        """Build a single feature card with icon, title, and description."""
         card = CardWidget(self)
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
-        card_layout.addWidget(SubtitleLabel("How to use", card))
+        root = QHBoxLayout(card)
+        root.setContentsMargins(CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING)
+        root.setSpacing(12)
 
-        steps = [
-            "1. Go to the Download tab and paste a video URL (e.g. from YouTube, TikTok, Pinterest).",
-            "2. Choose quality (Best, 720p, Photo/Image, etc.) and the folder where to save.",
-            "3. Click Download. Progress appears in the table and in the Logs tab.",
-        ]
-        for text in steps:
+        icon_w = IconWidget(icon, card)
+        icon_w.setFixedSize(FEATURE_ICON_SIZE, FEATURE_ICON_SIZE)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(4)
+        title_lbl = SubtitleLabel(title, card)
+        desc_lbl = CaptionLabel(desc, card)
+
+        text_col.addWidget(title_lbl)
+        text_col.addWidget(desc_lbl)
+
+        root.addWidget(icon_w, 0, Qt.AlignTop)
+        root.addLayout(text_col, 1)
+        return card
+
+    def _add_instructions_card(self):
+        """How-to-use card with steps and optional images."""
+        card = CardWidget(self)
+        layout = QVBoxLayout(card)
+        layout.setSpacing(10)
+        layout.addWidget(SubtitleLabel("How to use", card))
+
+        for text in HOW_TO_STEPS:
             lbl = BodyLabel(text, card)
             lbl.setWordWrap(True)
-            card_layout.addWidget(lbl)
+            layout.addWidget(lbl)
 
-        # Optional instruction images: add step1.png, step2.png, … in resources/instructions/
-        self._add_instruction_images(card_layout, card)
-
-        # Watch tutorial video button
-        video_row = QHBoxLayout()
-        video_btn = PushButton("Watch tutorial video", card)
-        video_btn.setToolTip("Watch the tutorial video to learn how to use the app")
-        video_btn.setToolTipDuration(1000)
-        video_btn.setIcon(FluentIcon.VIDEO)
-        video_btn.clicked.connect(self._open_tutorial_video)
-        video_btn.installEventFilter(ToolTipFilter(video_btn, showDelay=300, position=ToolTipPosition.TOP))
-        video_row.addWidget(video_btn)
-        video_row.addStretch(1)
-        card_layout.addLayout(video_row)
-
+        self._add_instruction_images(layout, card)
         self._layout.addWidget(card)
-        self._layout.addStretch(1)
-        
-
-
 
     def _add_instruction_images(self, layout: QVBoxLayout, parent):
-        """Add instruction images from resources/instructions/ if present (step1.png, step2.png, …)."""
+        """Append instruction images from resources/instructions/ if present."""
         if not INSTRUCTIONS_DIR.exists():
             return
         for i in range(1, 10):
@@ -107,20 +166,20 @@ class DashboardView(BaseView):
                     pix = QPixmap(str(path))
                     if not pix.isNull():
                         label = QLabel(parent)
-                        label.setPixmap(pix.scaledToWidth(560, Qt.SmoothTransformation))
+                        label.setPixmap(
+                            pix.scaledToWidth(560, Qt.SmoothTransformation)
+                        )
                         label.setAlignment(Qt.AlignCenter)
                         layout.addWidget(label)
                     break
 
-    def _open_tutorial_video(self):
-        try:
-            webbrowser.open(TUTORIAL_VIDEO_URL)
-        except Exception:
-            pass
-
     def _open_download_folder(self):
         path = load_settings().get("download_path", "")
-        target = Path(path) if path and Path(path).exists() else Path.home() / "Downloads"
+        target = (
+            Path(path)
+            if path and Path(path).exists()
+            else Path.home() / "Downloads"
+        )
         if not target.exists():
             return
         path_str = str(target)

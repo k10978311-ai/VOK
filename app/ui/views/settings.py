@@ -18,6 +18,7 @@ from qfluentwidgets import (
     setTheme,
     setThemeColor,
     Theme,
+    ColorDialog
 )
 
 from app.common.paths import get_default_downloads_dir
@@ -121,7 +122,10 @@ class SettingsView(BaseView):
         self._color_edit = LineEdit()
         self._color_edit.setFixedWidth(120)
         self._color_edit.setPlaceholderText("#0078D4")
+        color_btn = PushButton("Choose…")
+        color_btn.clicked.connect(self._pick_accent_color)
         color_card.hBoxLayout.addWidget(self._color_edit)
+        color_card.hBoxLayout.addWidget(color_btn)
         color_card.hBoxLayout.addSpacing(16)
         appear_group.addSettingCard(color_card)
 
@@ -227,3 +231,19 @@ class SettingsView(BaseView):
         )
         if path:
             self._cookies_edit.setText(path)
+
+    def _pick_accent_color(self):
+        """Open ColorDialog and set accent color hex to the line edit."""
+        raw = self._color_edit.text().strip() or "#0078D4"
+        initial = QColor(raw)
+        if not initial.isValid():
+            initial = QColor("#0078D4")
+        dialog = ColorDialog(initial, "Accent color", self)
+        if dialog.exec_():
+            color = None
+            if hasattr(dialog, "getColor"):
+                color = dialog.getColor()
+            elif hasattr(dialog, "color"):
+                color = dialog.color() if callable(dialog.color) else dialog.color
+            if isinstance(color, QColor) and color.isValid():
+                self._color_edit.setText(color.name())
