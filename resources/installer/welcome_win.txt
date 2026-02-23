@@ -1,0 +1,7 @@
+Welcome to VOK
+
+This installer will place VOK in your Program Files folder and optionally create a Desktop shortcut.
+
+VOK is a desktop application for downloading videos and scraping social media content, built with a modern Fluent Design UI.
+
+Click Next to proceed with the installation.

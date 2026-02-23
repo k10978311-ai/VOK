@@ -38,7 +38,7 @@ class MainWindow(FluentWindow):
         self.setMinimumSize(720, 480)
         self.setWindowTitle(APP_TITLE)
 
-        logo_path = PROJECT_ROOT / "resources" / "logo.png"
+        logo_path = PROJECT_ROOT / "resources" / "icon.ico"
         if logo_path.exists():
             from PyQt5.QtGui import QIcon
             self.setWindowIcon(QIcon(str(logo_path)))
