@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -37,6 +37,13 @@ from app.ui.utils import format_size, strip_ansi
 
 from .base import BaseView
 
+# Limits to avoid UI freeze and crashes with huge lists
+MAX_BULK_URLS = 2000
+MAX_PLAYLIST_DISPLAY = 1500
+PROGRESS_THROTTLE_MS = 120
+# Skip per-row log text updates when job count exceeds this (avoids UI flood)
+LOG_TABLE_UPDATE_MAX_JOBS = 80
+
 
 class DownloaderView(BaseView):
     """Multi-job downloader: single URL, bulk URL list, and selective playlist download."""
@@ -53,6 +60,10 @@ class DownloaderView(BaseView):
         self._job_to_row: dict[str, int] = {}
         self._job_progress: dict[str, float] = {}  # job_id -> 0.0..1.0 for overall header bar
         self._playlist_worker: PlaylistFetchWorker | None = None
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setSingleShot(True)
+        self._progress_timer.timeout.connect(self._flush_progress_ui)
+        self._progress_flush_pending = False
 
         self._build_url_card()
         self._build_bulk_card()
@@ -257,19 +268,30 @@ class DownloaderView(BaseView):
         self._playlist_worker.start()
 
     def _on_entries_ready(self, entries: list):
-        self._sel_entries = entries
-        self._sel_table.setRowCount(0)
-        for entry in entries:
-            row = self._sel_table.rowCount()
-            self._sel_table.insertRow(row)
-            chk = QTableWidgetItem()
-            chk.setCheckState(Qt.Checked)
-            self._sel_table.setItem(row, 0, chk)
-            self._sel_table.setItem(row, 1, QTableWidgetItem(entry.get("title", "")))
-            self._sel_table.setItem(row, 2, QTableWidgetItem(entry.get("uploader", "")))
-            self._sel_table.setItem(row, 3, QTableWidgetItem(fmt_duration(entry.get("duration"))))
-            self._sel_table.setItem(row, 4, QTableWidgetItem(fmt_date(entry.get("upload_date", ""))))
-        self._dl_selected_btn.setEnabled(bool(entries))
+        total = len(entries)
+        if total > MAX_PLAYLIST_DISPLAY:
+            display_entries = entries[:MAX_PLAYLIST_DISPLAY]
+            self._sel_status.setText(
+                f"Showing first {MAX_PLAYLIST_DISPLAY} of {total} entries. Use Select All / Deselect All then Download."
+            )
+        else:
+            display_entries = entries
+            self._sel_status.setText("")
+        self._sel_entries = display_entries
+        self._sel_table.setUpdatesEnabled(False)
+        try:
+            self._sel_table.setRowCount(len(display_entries))
+            for row, entry in enumerate(display_entries):
+                chk = QTableWidgetItem()
+                chk.setCheckState(Qt.Checked)
+                self._sel_table.setItem(row, 0, chk)
+                self._sel_table.setItem(row, 1, QTableWidgetItem(entry.get("title", "")))
+                self._sel_table.setItem(row, 2, QTableWidgetItem(entry.get("uploader", "")))
+                self._sel_table.setItem(row, 3, QTableWidgetItem(fmt_duration(entry.get("duration"))))
+                self._sel_table.setItem(row, 4, QTableWidgetItem(fmt_date(entry.get("upload_date", ""))))
+        finally:
+            self._sel_table.setUpdatesEnabled(True)
+        self._dl_selected_btn.setEnabled(bool(display_entries))
 
     def _on_preview_done(self, success: bool, msg: str):
         self._preview_progress.setVisible(False)
@@ -277,17 +299,21 @@ class DownloaderView(BaseView):
         self._sel_status.setText(msg)
 
     def _set_all_checks(self, state: bool):
-        for row in range(self._sel_table.rowCount()):
-            item = self._sel_table.item(row, 0)
-            if item:
-                item.setCheckState(Qt.Checked if state else Qt.Unchecked)
+        self._sel_table.setUpdatesEnabled(False)
+        try:
+            for row in range(self._sel_table.rowCount()):
+                item = self._sel_table.item(row, 0)
+                if item:
+                    item.setCheckState(Qt.Checked if state else Qt.Unchecked)
+        finally:
+            self._sel_table.setUpdatesEnabled(True)
 
     def _download_selected(self):
         s = load_settings()
         fmt = self._format_combo.currentText()
         out = s.get("download_path", str(get_default_downloads_dir()))
         cookies = s.get("cookies_file", "")
-        queued = 0
+        jobs_and_entries: list[tuple[DownloadJob, dict]] = []
         for row in range(self._sel_table.rowCount()):
             chk = self._sel_table.item(row, 0)
             if chk and chk.checkState() == Qt.Checked and row < len(self._sel_entries):
@@ -296,23 +322,28 @@ class DownloaderView(BaseView):
                 if url:
                     job = DownloadJob(url=url, output_dir=out, format_key=fmt,
                                       single_video=True, cookies_file=cookies)
-                    self._active_jobs.add(job.job_id)
-                    self._add_download_row(
-                        job.job_id, entry.get("title", url), out, url=url
-                    )
-                    self._manager.enqueue(job)
-                    queued += 1
-        if queued:
-            add_log_entry("info", f"Queued {queued} selected item(s) for download.")
-            self._progress_indet.setVisible(True)
-            self._progress.setVisible(False)
-            self._progress_pct_label.setVisible(False)
-            self._update_controls()
+                    jobs_and_entries.append((job, entry))
+        if not jobs_and_entries:
+            return
+        for job, entry in jobs_and_entries:
+            self._active_jobs.add(job.job_id)
+        rows_data = [
+            (j.job_id, entry.get("title", j.url), out, entry.get("url", ""))
+            for j, entry in jobs_and_entries
+        ]
+        self._add_download_rows_batch(rows_data)
+        for job, _ in jobs_and_entries:
+            self._manager.enqueue(job)
+        add_log_entry("info", f"Queued {len(jobs_and_entries)} selected item(s) for download.")
+        self._progress_indet.setVisible(True)
+        self._progress.setVisible(False)
+        self._progress_pct_label.setVisible(False)
+        self._update_controls()
 
     # ── Download table helpers ─────────────────────────────────────────────
 
     def _add_download_row(
-        self, job_id: str, message: str, output_dir: str = "", url: str = ""
+        self, job_id: str, message: str, output_dir: str = "", url: str = "", scroll: bool = True
     ) -> None:
         """Add a row for a new download job with a progress bar. Path shows output_dir until finished."""
         row = self._process_table.rowCount()
@@ -336,7 +367,22 @@ class DownloaderView(BaseView):
         self._process_table.setCellWidget(row, 6, bar)
         self._job_to_row[job_id] = row
         self._job_progress[job_id] = 0.0
-        self._process_table.scrollToBottom()
+        if scroll:
+            self._process_table.scrollToBottom()
+
+    def _add_download_rows_batch(
+        self, rows_data: list[tuple[str, str, str, str]]
+    ) -> None:
+        """Add many download rows in one go without repainting each time. Each item: (job_id, message, output_dir, url)."""
+        if not rows_data:
+            return
+        self._process_table.setUpdatesEnabled(False)
+        try:
+            for job_id, message, output_dir, url in rows_data:
+                self._add_download_row(job_id, message, output_dir, url, scroll=False)
+            self._process_table.scrollToBottom()
+        finally:
+            self._process_table.setUpdatesEnabled(True)
 
     def _clear_download_table(self) -> None:
         self._process_table.setRowCount(0)
@@ -356,11 +402,12 @@ class DownloaderView(BaseView):
         else:
             status = "info"
         add_log_entry(status, clean)
-        row = self._job_to_row.get(job_id)
-        if row is not None and row < self._process_table.rowCount():
-            msg_item = self._process_table.item(row, 3)
-            if msg_item:
-                msg_item.setText(clean[:500] if len(clean) > 500 else clean)
+        if len(self._active_jobs) <= LOG_TABLE_UPDATE_MAX_JOBS:
+            row = self._job_to_row.get(job_id)
+            if row is not None and row < self._process_table.rowCount():
+                msg_item = self._process_table.item(row, 3)
+                if msg_item:
+                    msg_item.setText(clean[:500] if len(clean) > 500 else clean)
 
     def _progress_col(self) -> int:
         return 6
@@ -395,18 +442,31 @@ class DownloaderView(BaseView):
         cookies = s.get("cookies_file", "")
 
         if self._bulk_switch.isChecked():
-            # Bulk mode: queue every non-empty line
+            # Bulk mode: dedupe, cap size, batch-add rows then enqueue
             text = self._bulk_edit.toPlainText()
-            urls = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            raw = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            urls = list(dict.fromkeys(raw))  # preserve order, remove duplicates
             if not urls:
                 self._log_append("Enter at least one URL in the bulk list.")
                 return
-            for url in urls:
-                job = DownloadJob(url=url, output_dir=out, format_key=fmt,
-                                  single_video=True, cookies_file=cookies)
-                self._active_jobs.add(job.job_id)
-                self._add_download_row(job.job_id, url, out, url=url)
-                self._manager.enqueue(job)
+            if len(urls) > MAX_BULK_URLS:
+                self._log_append(
+                    f"Bulk list capped at {MAX_BULK_URLS} URLs (had {len(urls)}). "
+                    "Split into multiple runs for more."
+                )
+                urls = urls[:MAX_BULK_URLS]
+            if len(raw) != len(urls):
+                self._log_append(f"Removed {len(raw) - len(urls)} duplicate URL(s).")
+            jobs_and_urls = [
+                (DownloadJob(url=url, output_dir=out, format_key=fmt, single_video=True, cookies_file=cookies), url)
+                for url in urls
+            ]
+            rows_data = [(j.job_id, url, out, url) for j, url in jobs_and_urls]
+            for j, _ in jobs_and_urls:
+                self._active_jobs.add(j.job_id)
+            self._add_download_rows_batch(rows_data)
+            for j, _ in jobs_and_urls:
+                self._manager.enqueue(j)
         else:
             url = self._url_edit.text().strip()
             if not url:
@@ -439,20 +499,27 @@ class DownloaderView(BaseView):
         self._progress.setValue(min(100, pct))
         self._progress_pct_label.setText(f"{pct}%")
 
-    def _on_progress(self, job_id: str, value: float) -> None:
+    def _flush_progress_ui(self) -> None:
+        """Apply stored progress to header bar and per-row bars (throttled)."""
+        self._progress_flush_pending = False
         self._progress_indet.setVisible(False)
         self._progress.setVisible(True)
         self._progress_pct_label.setVisible(True)
-        # Store this job's progress (0 for indeterminate)
-        self._job_progress[job_id] = max(0.0, min(1.0, value)) if value >= 0 else 0.0
         self._update_header_progress()
-        # Update this row's bar
-        row = self._job_to_row.get(job_id)
-        if row is not None and row < self._process_table.rowCount():
-            bar = self._process_table.cellWidget(row, self._progress_col())
-            if isinstance(bar, ProgressBar):
-                bar.setRange(0, 100)
-                bar.setValue(int((value if value >= 0 else 0) * 100))
+        for job_id, row in list(self._job_to_row.items()):
+            if row < self._process_table.rowCount():
+                value = self._job_progress.get(job_id, 0.0)
+                bar = self._process_table.cellWidget(row, self._progress_col())
+                if isinstance(bar, ProgressBar):
+                    bar.setRange(0, 100)
+                    bar.setValue(int(max(0.0, min(1.0, value)) * 100))
+
+    def _on_progress(self, job_id: str, value: float) -> None:
+        """Store progress and schedule a single UI update to avoid flooding."""
+        self._job_progress[job_id] = max(0.0, min(1.0, value)) if value >= 0 else 0.0
+        if not self._progress_flush_pending:
+            self._progress_flush_pending = True
+            QTimer.singleShot(PROGRESS_THROTTLE_MS, self._flush_progress_ui)
 
     def _stop_all(self):
         self._manager.cancel_all()

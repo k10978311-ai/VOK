@@ -1,5 +1,6 @@
 """Multi-thread download manager: queue and worker pool for parallel downloads."""
 
+import uuid
 from queue import Empty, Queue
 
 from PyQt5.QtCore import QObject, pyqtSignal
@@ -27,7 +28,7 @@ class DownloadJob:
         self.format_key = format_key
         self.single_video = single_video
         self.cookies_file = cookies_file or ""
-        self.job_id = job_id or self.url[:80]
+        self.job_id = job_id or f"{self.url[:64]}_{uuid.uuid4().hex[:8]}"
 
 
 class DownloadManager(QObject):

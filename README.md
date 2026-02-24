@@ -18,22 +18,6 @@ A desktop application for downloading videos and scraping social media content, 
 | **Parallel Downloads** | Up to 4 concurrent jobs (configurable) |
 | **Cookies Support** | Authenticated downloads via Netscape cookies file |
 
-### Analytics Tab
-| Feature | Details |
-|---|---|
-| **Post Statistics** | Views, likes, dislikes, comments, upload date, duration, tags |
-| **Follower / Subscriber Count** | Shown when available from the platform |
-| **Comments Scraping** | Fetch up to 1 000 comments per post — export to CSV |
-| **Content Search** | Search YouTube, TikTok, SoundCloud, or Bilibili by keyword |
-| **Hashtag Scraping** | Toggle hashtag mode to search by `#tag` |
-| **Sort by Engagement** | Sort results by views (high→low) or likes (high→low) |
-| **Sort by Date** | Sort results newest or oldest first |
-| **Content Translation** | Translate any text to 16 languages (free, no API key) |
-
-### Supported Platforms
-YouTube · TikTok · Douyin · Kuaishou · Instagram · Facebook · Pinterest · Twitter / X · ok.ru · VK · Twitch · Vimeo · Dailymotion · SoundCloud · Bilibili · Reddit · and **1 000+ more** via yt-dlp
-
----
 
 ## Requirements
 
@@ -129,29 +113,6 @@ Export cookies from your browser using the [Get cookies.txt LOCALLY](https://chr
 | Video (mp4) | MP4 container preferred |
 | Audio (mp3) | Extracts audio as MP3 192kbps (FFmpeg required) |
 | Photo / Image | Image posts; also saves thumbnails |
-
----
-
-## Analytics — Feature Notes
-
-### Post Statistics
-Paste any video URL and click **Fetch Stats** to see views, likes, comments count, follower/subscriber count, upload date, duration, tags, and description. The description is automatically copied to the Translation input.
-
-### Comments Scraper
-- Set **Max** (10–1 000) before fetching.
-- Works best with YouTube; also supports TikTok with cookies.
-- Click **Export CSV** to save all comments to a spreadsheet-compatible file.
-
-### Content Search
-- Select a platform, type a keyword, and click **Search**.
-- Toggle **Hashtag** to prefix the query with `#`.
-- Use **Sort by** to re-order results by views, likes, or date without re-fetching.
-- Double-click any row to copy its URL to the clipboard.
-
-### Content Translation
-- Supports auto-detection of the source language.
-- Powered by [MyMemory](https://mymemory.translated.net/) (free tier: 1 000 requests/day, no API key required).
-- 16 target languages: English, Spanish, French, German, Japanese, Korean, Chinese, Arabic, Portuguese, Russian, Italian, Hindi, Turkish, Vietnamese, Thai, Indonesian.
 
 ---
 
