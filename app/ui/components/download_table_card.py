@@ -1,19 +1,20 @@
-"""Download Table card: header, Clear button, and jobs table with Time/Host/Status/Message/Path/Size/Progress."""
+"""Download Table card: header, Clear button, and Qt5 table with Time/Host/Status/Message/Path/Size/Progress."""
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
+    QTableWidget,
     QVBoxLayout,
-    QWidget,
 )
-from qfluentwidgets import CardWidget, FluentIcon, PushButton, TableWidget
+from qfluentwidgets import CardWidget, FluentIcon, PushButton
 
 from .card_header import CardHeader
 
 
 class DownloadTableCard(CardWidget):
-    """Card containing "Download Table" title, Clear button, and 7-column process table."""
+    """Card containing "Download Table" title, Clear button, and 7-column Qt5 process table."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,7 +29,7 @@ class DownloadTableCard(CardWidget):
         hdr.addWidget(self.clear_btn)
         layout.addLayout(hdr)
 
-        self.table = TableWidget(self)
+        self.table = QTableWidget(self)
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
             ["Time", "Host", "Status", "Message", "Path", "Size", "Progress"]
@@ -40,11 +41,12 @@ class DownloadTableCard(CardWidget):
         hdr_view.setSectionResizeMode(3, QHeaderView.Stretch)
         hdr_view.setSectionResizeMode(4, QHeaderView.Stretch)
         hdr_view.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(6, QHeaderView.Fixed)
-        self.table.setColumnWidth(6, 140)
+        hdr_view.setSectionResizeMode(6, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
-        self.table.setMinimumHeight(220)
+        self.table.setMinimumHeight(320)
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         layout.addWidget(self.table)

@@ -10,6 +10,7 @@ from qfluentwidgets import Theme, setTheme, setThemeColor, FluentIcon, SplashScr
 from app.common.paths import PROJECT_ROOT
 from app.config import load_settings
 from app.ui.main_window import MainWindow
+from app.ui.theme import apply_app_palette
 
 _THEME_MAP = {"Auto": Theme.AUTO, "Light": Theme.LIGHT, "Dark": Theme.DARK}
 
@@ -25,10 +26,14 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("VOK")
     app.setApplicationDisplayName("VOK - Video Downloader and Content Scraper")
+    app.setStyle("Fusion")
 
     s = load_settings()
-    setTheme(_THEME_MAP.get(s.get("theme", "Dark"), Theme.DARK))
-    setThemeColor(QColor(s.get("theme_color", "#0078D4")))
+    theme_name = s.get("theme", "Dark")
+    theme_color = s.get("theme_color", "#0078D4")
+    setTheme(_THEME_MAP.get(theme_name, Theme.DARK))
+    setThemeColor(QColor(theme_color))
+    apply_app_palette(theme_name, theme_color)
 
     window = MainWindow()
 

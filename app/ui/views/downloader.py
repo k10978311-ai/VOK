@@ -1,12 +1,18 @@
 """Downloader view: single, bulk, and selective download with HD/4K/Photo formats."""
 
+import os
+import subprocess
+import sys
 from datetime import datetime
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QPoint, QTimer
 from PyQt5.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QHeaderView,
+    QMenu,
+    QSizePolicy,
     QTableWidgetItem,
     QVBoxLayout,
 )
@@ -60,6 +66,7 @@ class DownloaderView(BaseView):
         self._job_to_row: dict[str, int] = {}
         self._job_progress: dict[str, float] = {}  # job_id -> 0.0..1.0 for overall header bar
         self._playlist_worker: PlaylistFetchWorker | None = None
+        self._direct_playlist_worker: PlaylistFetchWorker | None = None  # for profile/playlist → N jobs
         self._progress_timer = QTimer(self)
         self._progress_timer.setSingleShot(True)
         self._progress_timer.timeout.connect(self._flush_progress_ui)
@@ -210,27 +217,26 @@ class DownloaderView(BaseView):
         self._layout.addWidget(card)
 
     def _build_progress(self):
-        progress_row = QHBoxLayout()
+        """Top progress bar not shown; per-row progress in table only."""
         self._progress_indet = IndeterminateProgressBar(self)
+        self._progress_indet.setAttribute(Qt.WA_DontShowOnScreen)
         self._progress_indet.setVisible(False)
-        progress_row.addWidget(self._progress_indet, 1)
-
         self._progress = ProgressBar(self)
+        self._progress.setAttribute(Qt.WA_DontShowOnScreen)
         self._progress.setVisible(False)
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        progress_row.addWidget(self._progress, 1)
-
         self._progress_pct_label = BodyLabel("0%", self)
+        self._progress_pct_label.setAttribute(Qt.WA_DontShowOnScreen)
         self._progress_pct_label.setVisible(False)
         self._progress_pct_label.setMinimumWidth(40)
-        progress_row.addWidget(self._progress_pct_label)
-        self._layout.addLayout(progress_row)
+        # Not added to layout; WA_DontShowOnScreen so they never paint on screen
 
     def _build_log_card(self):
         card = DownloadTableCard(self)
         card.clear_btn.clicked.connect(self._clear_download_table)
         self._process_table = card.table
+        self._process_table.customContextMenuRequested.connect(self._on_process_table_context_menu)
         self._layout.addWidget(card)
 
     # ── Mode toggles ──────────────────────────────────────────────────────
@@ -340,6 +346,63 @@ class DownloaderView(BaseView):
         self._progress_pct_label.setVisible(False)
         self._update_controls()
 
+    def _start_download_from_playlist(self, url: str, out: str, fmt: str, cookies: str) -> None:
+        """Phase 1: one extract job (fetch playlist/profile). Phase 2: N separate download jobs."""
+        if self._direct_playlist_worker and self._direct_playlist_worker.isRunning():
+            return
+        self._direct_playlist_worker = PlaylistFetchWorker(url, cookies_file=cookies, parent=self)
+        self._direct_playlist_worker.log_line.connect(self._log_append)
+        self._direct_playlist_worker.entries_ready.connect(
+            lambda entries: self._on_direct_playlist_entries(entries, out, fmt, cookies)
+        )
+        self._direct_playlist_worker.finished_signal.connect(self._on_direct_playlist_finished)
+        self._set_profile_extract_controls(False)
+        self._start_btn.setEnabled(False)
+        self._log_append("[info] Phase 1: Extracting video list from profile/playlist…")
+        self._direct_playlist_worker.start()
+
+    def _on_direct_playlist_entries(
+        self, entries: list, output_dir: str, format_key: str, cookies: str
+    ) -> None:
+        """Phase 2: enqueue one download job per entry; failed jobs are skipped and next continues."""
+        jobs_and_entries: list[tuple[DownloadJob, dict]] = []
+        for entry in entries:
+            url = entry.get("url", "").strip()
+            if not url:
+                continue
+            job = DownloadJob(
+                url=url,
+                output_dir=output_dir,
+                format_key=format_key,
+                single_video=True,
+                cookies_file=cookies,
+            )
+            jobs_and_entries.append((job, entry))
+        if not jobs_and_entries:
+            self._log_append("No video URLs in playlist/profile.")
+            return
+        for job, _ in jobs_and_entries:
+            self._active_jobs.add(job.job_id)
+        rows_data = [
+            (j.job_id, entry.get("title", j.url), output_dir, entry.get("url", ""))
+            for j, entry in jobs_and_entries
+        ]
+        self._add_download_rows_batch(rows_data)
+        for job, _ in jobs_and_entries:
+            self._manager.enqueue(job)
+        add_log_entry(
+            "info",
+            f"Phase 2: Queued {len(jobs_and_entries)} download(s); up to {self._manager.max_workers} in parallel. Errors skip to next.",
+        )
+        self._update_controls()
+
+    def _on_direct_playlist_finished(self, success: bool, msg: str) -> None:
+        self._direct_playlist_worker = None
+        self._set_profile_extract_controls(True)
+        if not success:
+            self._log_append(msg)
+        self._update_controls()
+
     # ── Download table helpers ─────────────────────────────────────────────
 
     def _add_download_row(
@@ -349,7 +412,9 @@ class DownloaderView(BaseView):
         row = self._process_table.rowCount()
         self._process_table.insertRow(row)
         time_str = datetime.now().strftime("%H:%M:%S")
-        self._process_table.setItem(row, 0, QTableWidgetItem(time_str))
+        time_item = QTableWidgetItem(time_str)
+        time_item.setData(Qt.UserRole, job_id)
+        self._process_table.setItem(row, 0, time_item)
         platform = detect_platform(url) if url else "Unknown"
         host_item = QTableWidgetItem()
         host_item.setIcon(host_icon(platform))
@@ -363,7 +428,8 @@ class DownloaderView(BaseView):
         bar.setRange(0, 100)
         bar.setValue(0)
         bar.setFixedHeight(20)
-        bar.setFixedWidth(120)
+        bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        bar.setMinimumWidth(80)
         self._process_table.setCellWidget(row, 6, bar)
         self._job_to_row[job_id] = row
         self._job_progress[job_id] = 0.0
@@ -387,6 +453,71 @@ class DownloaderView(BaseView):
     def _clear_download_table(self) -> None:
         self._process_table.setRowCount(0)
         self._job_to_row.clear()
+
+    def _on_process_table_context_menu(self, pos: QPoint) -> None:
+        """Show right-click menu for the selected row: Copy path, Open folder, Cancel job, Remove row."""
+        row = self._process_table.indexAt(pos).row()
+        if row < 0:
+            return
+        item0 = self._process_table.item(row, 0)
+        job_id = item0.data(Qt.UserRole) if item0 else None
+        if not job_id:
+            return
+        path_item = self._process_table.item(row, 4)
+        path = (path_item.text() or "").strip().replace("—", "").strip() or None
+        is_active = job_id in self._active_jobs
+
+        menu = QMenu(self)
+        copy_act = menu.addAction("Copy path")
+        copy_act.setEnabled(bool(path))
+        open_act = menu.addAction("Open folder")
+        open_act.setEnabled(bool(path))
+        menu.addSeparator()
+        cancel_act = menu.addAction("Cancel this job")
+        cancel_act.setEnabled(is_active)
+        remove_act = menu.addAction("Remove row")
+
+        action = menu.exec_(self._process_table.viewport().mapToGlobal(pos))
+        if action is None:
+            return
+        if action == copy_act and path:
+            QApplication.instance().clipboard().setText(path)
+            add_log_entry("info", "Path copied to clipboard.")
+        elif action == open_act and path:
+            self._open_path_in_explorer(path)
+        elif action == cancel_act and is_active:
+            self._manager.cancel_job(job_id)
+            add_log_entry("info", "Job cancelled.")
+        elif action == remove_act:
+            self._remove_download_row(row, job_id)
+
+    def _open_path_in_explorer(self, path: str) -> None:
+        """Open the path in the system file manager (folder or file's parent)."""
+        if not path or not os.path.exists(path):
+            return
+        target = os.path.dirname(path) if os.path.isfile(path) else path
+        try:
+            if sys.platform == "win32":
+                os.startfile(target)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", target], check=False)
+            else:
+                subprocess.run(["xdg-open", target], check=False)
+        except Exception:
+            add_log_entry("error", f"Could not open folder: {target}")
+
+    def _remove_download_row(self, row: int, job_id: str) -> None:
+        """Remove one row and update job maps; cancel job if running."""
+        if job_id in self._active_jobs:
+            self._manager.cancel_job(job_id)
+        self._active_jobs.discard(job_id)
+        self._job_progress.pop(job_id, None)
+        self._process_table.removeRow(row)
+        self._job_to_row.pop(job_id, None)
+        for jid in list(self._job_to_row):
+            if self._job_to_row[jid] > row:
+                self._job_to_row[jid] -= 1
+        self._update_controls()
 
     def _on_job_log(self, job_id: str, text: str) -> None:
         clean = strip_ansi(text.strip())
@@ -428,10 +559,26 @@ class DownloaderView(BaseView):
             status = "info"
         add_log_entry(status, clean)
 
+    def _is_extracting(self) -> bool:
+        """True while profile/playlist extract (one job) is running."""
+        return (
+            self._direct_playlist_worker is not None
+            and self._direct_playlist_worker.isRunning()
+        )
+
+    def _set_profile_extract_controls(self, enabled: bool) -> None:
+        """Enable/disable URL and mode controls during profile extract phase."""
+        self._url_edit.setEnabled(enabled)
+        self._bulk_switch.setEnabled(enabled)
+        self._selective_switch.setEnabled(enabled)
+        self._format_combo.setEnabled(enabled)
+
     def _update_controls(self):
         count = len(self._active_jobs)
         self._stop_btn.setEnabled(count > 0)
         self._jobs_label.setText(f"{count} active" if count else "")
+        # Disable Download while extracting or while any download jobs are active
+        self._start_btn.setEnabled(count == 0 and not self._is_extracting())
 
     # ── Download control ──────────────────────────────────────────────────
 
@@ -472,16 +619,21 @@ class DownloaderView(BaseView):
             if not url:
                 self._log_append("Enter a URL first.")
                 return
-            job = DownloadJob(
-                url=url,
-                output_dir=out,
-                format_key=fmt,
-                single_video=s.get("single_video_default", True),
-                cookies_file=cookies,
-            )
-            self._active_jobs.add(job.job_id)
-            self._add_download_row(job.job_id, url, out, url=job.url)
-            self._manager.enqueue(job)
+            single_video = s.get("single_video_default", True)
+            if not single_video and not (self._direct_playlist_worker and self._direct_playlist_worker.isRunning()):
+                # Profile/playlist URL: fetch entries then enqueue one job per video (uses concurrent_downloads)
+                self._start_download_from_playlist(url, out, fmt, cookies)
+            else:
+                job = DownloadJob(
+                    url=url,
+                    output_dir=out,
+                    format_key=fmt,
+                    single_video=single_video,
+                    cookies_file=cookies,
+                )
+                self._active_jobs.add(job.job_id)
+                self._add_download_row(job.job_id, url, out, url=job.url)
+                self._manager.enqueue(job)
 
         self._progress_indet.setVisible(True)
         self._progress.setVisible(False)
@@ -531,11 +683,13 @@ class DownloaderView(BaseView):
         self._active_jobs.discard(job_id)
         self._job_progress.pop(job_id, None)
         add_log_entry("info" if success else "error", message)
+        if not success:
+            add_log_entry("info", "Skipped (error), continuing with next job.")
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
             status_item = self._process_table.item(row, 2)
             if status_item:
-                status_item.setText("Done" if success else "Error")
+                status_item.setText("Done" if success else "Skipped")
             msg_item = self._process_table.item(row, 3)
             if msg_item:
                 msg_item.setText(message[:500] if len(message) > 500 else message)
@@ -547,8 +701,11 @@ class DownloaderView(BaseView):
                 size_item.setText(format_size(size_bytes))
             bar = self._process_table.cellWidget(row, self._progress_col())
             if isinstance(bar, ProgressBar):
-                bar.setRange(0, 100)
-                bar.setValue(100 if success else 0)
+                if success:
+                    bar.setVisible(False)
+                else:
+                    bar.setRange(0, 100)
+                    bar.setValue(0)
         if not self._active_jobs:
             self._progress_indet.setVisible(False)
             self._progress.setVisible(False)

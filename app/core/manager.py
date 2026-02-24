@@ -54,6 +54,11 @@ class DownloadManager(QObject):
         self._running: dict[str, DownloadWorker] = {}
         self._stop = False
 
+    @property
+    def max_workers(self) -> int:
+        """Number of parallel download jobs (for UI)."""
+        return self._max_workers
+
     def enqueue(self, job: DownloadJob) -> None:
         """Add a job; start immediately if a worker slot is free."""
         if len(self._running) < self._max_workers:

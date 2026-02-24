@@ -24,6 +24,7 @@ from qfluentwidgets import (
 from app.common.paths import get_default_downloads_dir
 from app.common.state import add_log_entry
 from app.config import load_settings, save_settings
+from app.ui.theme import apply_app_palette
 
 from .base import BaseView
 
@@ -205,6 +206,7 @@ class SettingsView(BaseView):
             setThemeColor(QColor(color_hex))
         except Exception:
             pass
+        apply_app_palette(theme_name, color_hex)
 
         add_log_entry("info", "Settings saved.")
         InfoBar.success(
