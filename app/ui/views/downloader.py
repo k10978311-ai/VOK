@@ -11,12 +11,12 @@ from PyQt5.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QHeaderView,
-    QMenu,
     QSizePolicy,
     QTableWidgetItem,
     QVBoxLayout,
 )
 from qfluentwidgets import (
+    Action,
     BodyLabel,
     CardWidget,
     ComboBox,
@@ -27,6 +27,7 @@ from qfluentwidgets import (
     ProgressBar,
     PrimaryPushButton,
     PushButton,
+    RoundMenu,
     SwitchButton,
     TableWidget,
 )
@@ -217,20 +218,10 @@ class DownloaderView(BaseView):
         self._layout.addWidget(card)
 
     def _build_progress(self):
-        """Top progress bar not shown; per-row progress in table only."""
-        self._progress_indet = IndeterminateProgressBar(self)
-        self._progress_indet.setAttribute(Qt.WA_DontShowOnScreen)
-        self._progress_indet.setVisible(False)
-        self._progress = ProgressBar(self)
-        self._progress.setAttribute(Qt.WA_DontShowOnScreen)
-        self._progress.setVisible(False)
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._progress_pct_label = BodyLabel("0%", self)
-        self._progress_pct_label.setAttribute(Qt.WA_DontShowOnScreen)
-        self._progress_pct_label.setVisible(False)
-        self._progress_pct_label.setMinimumWidth(40)
-        # Not added to layout; WA_DontShowOnScreen so they never paint on screen
+        """Top progress bar removed; per-row progress in table only."""
+        self._progress_indet = None
+        self._progress = None
+        self._progress_pct_label = None
 
     def _build_log_card(self):
         card = DownloadTableCard(self)
@@ -268,7 +259,7 @@ class DownloaderView(BaseView):
         self._playlist_worker.log_line.connect(self._log_append)
         self._playlist_worker.entries_ready.connect(self._on_entries_ready)
         self._playlist_worker.finished_signal.connect(self._on_preview_done)
-        self._preview_progress.setVisible(True)
+        self._preview_progress.setVisible(False)
         self._preview_btn.setEnabled(False)
         self._sel_status.setText("Fetching playlist…")
         self._playlist_worker.start()
@@ -341,9 +332,12 @@ class DownloaderView(BaseView):
         for job, _ in jobs_and_entries:
             self._manager.enqueue(job)
         add_log_entry("info", f"Queued {len(jobs_and_entries)} selected item(s) for download.")
-        self._progress_indet.setVisible(True)
-        self._progress.setVisible(False)
-        self._progress_pct_label.setVisible(False)
+        if self._progress_indet is not None:
+            self._progress_indet.setVisible(False)
+        if self._progress is not None:
+            self._progress.setVisible(False)
+        if self._progress_pct_label is not None:
+            self._progress_pct_label.setVisible(False)
         self._update_controls()
 
     def _start_download_from_playlist(self, url: str, out: str, fmt: str, cookies: str) -> None:
@@ -455,7 +449,7 @@ class DownloaderView(BaseView):
         self._job_to_row.clear()
 
     def _on_process_table_context_menu(self, pos: QPoint) -> None:
-        """Show right-click menu for the selected row: Copy path, Open folder, Cancel job, Remove row."""
+        """Show right-click RoundMenu for the row: Copy path, Open folder, Cancel job, Remove row."""
         row = self._process_table.indexAt(pos).row()
         if row < 0:
             return
@@ -467,29 +461,42 @@ class DownloaderView(BaseView):
         path = (path_item.text() or "").strip().replace("—", "").strip() or None
         is_active = job_id in self._active_jobs
 
-        menu = QMenu(self)
-        copy_act = menu.addAction("Copy path")
+        menu = RoundMenu(title="", parent=self)
+        copy_act = Action(FluentIcon.COPY, "Copy path", triggered=lambda: self._copy_path_and_log(path))
         copy_act.setEnabled(bool(path))
-        open_act = menu.addAction("Open folder")
-        open_act.setEnabled(bool(path))
-        menu.addSeparator()
-        cancel_act = menu.addAction("Cancel this job")
-        cancel_act.setEnabled(is_active)
-        remove_act = menu.addAction("Remove row")
+        menu.addAction(copy_act)
 
-        action = menu.exec_(self._process_table.viewport().mapToGlobal(pos))
-        if action is None:
-            return
-        if action == copy_act and path:
+        open_act = Action(FluentIcon.FOLDER, "Open folder", triggered=lambda: self._open_path_in_explorer(path))
+        open_act.setEnabled(bool(path))
+        menu.addAction(open_act)
+
+        menu.addSeparator()
+
+        cancel_act = Action(
+            FluentIcon.CANCEL,
+            "Cancel this job",
+            triggered=lambda: self._cancel_job_and_log(job_id),
+        )
+        cancel_act.setEnabled(is_active)
+        menu.addAction(cancel_act)
+
+        remove_act = Action(
+            FluentIcon.DELETE,
+            "Remove row",
+            triggered=lambda: self._remove_download_row(row, job_id),
+        )
+        menu.addAction(remove_act)
+
+        menu.exec_(self._process_table.viewport().mapToGlobal(pos))
+
+    def _copy_path_and_log(self, path: str) -> None:
+        if path:
             QApplication.instance().clipboard().setText(path)
             add_log_entry("info", "Path copied to clipboard.")
-        elif action == open_act and path:
-            self._open_path_in_explorer(path)
-        elif action == cancel_act and is_active:
-            self._manager.cancel_job(job_id)
-            add_log_entry("info", "Job cancelled.")
-        elif action == remove_act:
-            self._remove_download_row(row, job_id)
+
+    def _cancel_job_and_log(self, job_id: str) -> None:
+        self._manager.cancel_job(job_id)
+        add_log_entry("info", "Job cancelled.")
 
     def _open_path_in_explorer(self, path: str) -> None:
         """Open the path in the system file manager (folder or file's parent)."""
@@ -635,14 +642,17 @@ class DownloaderView(BaseView):
                 self._add_download_row(job.job_id, url, out, url=job.url)
                 self._manager.enqueue(job)
 
-        self._progress_indet.setVisible(True)
-        self._progress.setVisible(False)
-        self._progress_pct_label.setVisible(False)
+        if self._progress_indet is not None:
+            self._progress_indet.setVisible(True)
+        if self._progress is not None:
+            self._progress.setVisible(False)
+        if self._progress_pct_label is not None:
+            self._progress_pct_label.setVisible(False)
         self._update_controls()
 
     def _update_header_progress(self) -> None:
-        """Update header progress bar and percentage label from all active jobs."""
-        if not self._job_progress:
+        """Update header progress bar and percentage label from all active jobs (no-op if removed)."""
+        if not self._job_progress or self._progress is None or self._progress_pct_label is None:
             return
         total = sum(self._job_progress.values())
         n = len(self._job_progress)
@@ -652,11 +662,14 @@ class DownloaderView(BaseView):
         self._progress_pct_label.setText(f"{pct}%")
 
     def _flush_progress_ui(self) -> None:
-        """Apply stored progress to header bar and per-row bars (throttled)."""
+        """Apply stored progress to per-row bars only (top bar removed)."""
         self._progress_flush_pending = False
-        self._progress_indet.setVisible(False)
-        self._progress.setVisible(True)
-        self._progress_pct_label.setVisible(True)
+        if self._progress_indet is not None:
+            self._progress_indet.setVisible(False)
+        if self._progress is not None:
+            self._progress.setVisible(True)
+        if self._progress_pct_label is not None:
+            self._progress_pct_label.setVisible(True)
         self._update_header_progress()
         for job_id, row in list(self._job_to_row.items()):
             if row < self._process_table.rowCount():
@@ -707,9 +720,12 @@ class DownloaderView(BaseView):
                     bar.setRange(0, 100)
                     bar.setValue(0)
         if not self._active_jobs:
-            self._progress_indet.setVisible(False)
-            self._progress.setVisible(False)
-            self._progress_pct_label.setVisible(False)
+            if self._progress_indet is not None:
+                self._progress_indet.setVisible(False)
+            if self._progress is not None:
+                self._progress.setVisible(False)
+            if self._progress_pct_label is not None:
+                self._progress_pct_label.setVisible(False)
         else:
             self._update_header_progress()
         self._update_controls()

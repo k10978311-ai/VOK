@@ -1,20 +1,19 @@
-"""Download Table card: header, Clear button, and Qt5 table with Time/Host/Status/Message/Path/Size/Progress."""
+"""Download Table card: header, Clear button, and qfluentwidgets TableWidget with Time/Host/Status/Message/Path/Size/Progress."""
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
-    QTableWidget,
     QVBoxLayout,
 )
-from qfluentwidgets import CardWidget, FluentIcon, PushButton
+from qfluentwidgets import CardWidget, FluentIcon, PushButton, TableWidget
 
 from .card_header import CardHeader
 
 
 class DownloadTableCard(CardWidget):
-    """Card containing "Download Table" title, Clear button, and 7-column Qt5 process table."""
+    """Card containing "Download Table" title, Clear button, and 7-column process table."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -29,7 +28,7 @@ class DownloadTableCard(CardWidget):
         hdr.addWidget(self.clear_btn)
         layout.addLayout(hdr)
 
-        self.table = QTableWidget(self)
+        self.table = TableWidget(self)
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
             ["Time", "Host", "Status", "Message", "Path", "Size", "Progress"]
