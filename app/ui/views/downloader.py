@@ -80,6 +80,7 @@ class DownloaderView(BaseView):
         self._build_url_card()
         self._build_bulk_card()
         self._build_selective_card()
+        self._build_enhance_card()
         self._build_path_panel()
         self._build_format_card()
         self._build_progress()
@@ -90,27 +91,29 @@ class DownloaderView(BaseView):
         # Start with Single mode: only URL card visible
         self._bulk_card.setVisible(False)
         self._selective_card.setVisible(False)
+        self._enhance_card.setVisible(False)
 
     # ── Card builders ─────────────────────────────────────────────────────
 
     def _build_mode_bar(self):
-        """Top segmented bar: Single | Bulk | Selective."""
+        """Top segmented bar: Single | Bulk | Selective | Enhance."""
         self._mode_segmented = SegmentedWidget(self)
         self._mode_segmented.insertItem(0, "single", "Single", self._on_download_mode_changed)
         self._mode_segmented.insertItem(1, "bulk", "Bulk", self._on_download_mode_changed)
         self._mode_segmented.insertItem(2, "selective", "Selective", self._on_download_mode_changed)
+        self._mode_segmented.insertItem(3, "enhance", "Enhance", self._on_download_mode_changed)
         self._mode_segmented.setCurrentItem("single")
         self._layout.addWidget(self._mode_segmented)
 
     def _build_url_card(self):
-        card = CardWidget(self)
-        lay = QVBoxLayout(card)
+        self._url_card = CardWidget(self)
+        lay = QVBoxLayout(self._url_card)
         lay.setSpacing(10)
-        lay.addWidget(CardHeader(FluentIcon.LINK, "Video URL", card))
+        lay.addWidget(CardHeader(FluentIcon.LINK, "Video URL", self._url_card))
 
         url_row = QHBoxLayout()
-        url_row.addWidget(BodyLabel("URL", card))
-        self._url_edit = LineEdit(card)
+        url_row.addWidget(BodyLabel("URL", self._url_card))
+        self._url_edit = LineEdit(self._url_card)
         self._url_edit.setPlaceholderText(
             "https://  —  YouTube, TikTok, Douyin, Kuaishou, Instagram, Facebook, Pinterest, Twitter/X …"
         )
@@ -118,7 +121,7 @@ class DownloaderView(BaseView):
         url_row.addWidget(self._url_edit, 1)
         lay.addLayout(url_row)
 
-        self._layout.addWidget(card)
+        self._layout.addWidget(self._url_card)
 
     def _build_path_panel(self):
         """Path panel component: current download folder + Open folder."""
@@ -136,6 +139,17 @@ class DownloaderView(BaseView):
         self._bulk_edit.setMinimumHeight(120)
         lay.addWidget(self._bulk_edit)
         self._layout.addWidget(self._bulk_card)
+
+    def _build_enhance_card(self):
+        """Placeholder card for Enhance mode: Coming soon."""
+        self._enhance_card = CardWidget(self)
+        lay = QVBoxLayout(self._enhance_card)
+        lay.setSpacing(10)
+        lay.addWidget(CardHeader(FluentIcon.SYNC, "Enhance", self._enhance_card))
+        coming = BodyLabel("Coming soon!", self._enhance_card)
+        coming.setStyleSheet("font-size: 16px; padding: 24px 0;")
+        lay.addWidget(coming, 0, Qt.AlignCenter)
+        self._layout.addWidget(self._enhance_card)
 
     def _build_selective_card(self):
         self._selective_card = CardWidget(self)
@@ -241,8 +255,12 @@ class DownloaderView(BaseView):
 
     def _on_download_mode_changed(self):
         key = self._mode_segmented.currentRouteKey()
+        is_enhance = key == "enhance"
+        # Hide URL card in Bulk (paste URLs in bulk list) and in Enhance (coming soon)
+        self._url_card.setVisible(not is_enhance and key != "bulk")
         self._bulk_card.setVisible(key == "bulk")
         self._selective_card.setVisible(key == "selective")
+        self._enhance_card.setVisible(is_enhance)
 
     # ── Selective download helpers ─────────────────────────────────────────
 
@@ -605,7 +623,9 @@ class DownloaderView(BaseView):
         self._stop_btn.setEnabled(count > 0)
         self._jobs_label.setText(f"{count} active" if count else "")
         # Disable Download while extracting or while any download jobs are active
-        self._start_btn.setEnabled(count == 0 and not self._is_extracting())
+        self._start_btn.setEnabled(
+            count == 0 and not self._is_extracting() and self._mode_segmented.currentRouteKey() != "enhance"
+        )
 
     # ── Download control ──────────────────────────────────────────────────
 
