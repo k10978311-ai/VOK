@@ -23,8 +23,8 @@ class MainWindow(FluentWindow):
 
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Dashboard")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
-        self.addSubInterface(self.studio, FluentIcon.VIDEO, "VOK Studio")
-        self.addSubInterface(self.logs, FluentIcon.FOLDER, "Logs")
+        # self.addSubInterface(self.studio, FluentIcon.VIDEO, "VOK Studio")
+        # self.addSubInterface(self.logs, FluentIcon.FOLDER, "Logs")
         self.navigationInterface.addSeparator()
         self.addSubInterface(
             self.settings,
