@@ -3,7 +3,7 @@ from qfluentwidgets import FluentIcon, FluentWindow, NavigationItemPosition
 
 from app.common.paths import PROJECT_ROOT
 
-from .views import DashboardView, DownloaderView, LogsView, SettingsView
+from .views import DashboardView, DownloaderView, LogsView, SettingsView, VokStudioView
 
 APP_TITLE = "VOK — Download (Version 1.0)"
 
@@ -17,11 +17,13 @@ class MainWindow(FluentWindow):
 
         self.dashboard = DashboardView(self)
         self.downloader = DownloaderView(self)
+        self.studio = VokStudioView(self)
         self.logs = LogsView(self)
         self.settings = SettingsView(self)
 
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Dashboard")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
+        self.addSubInterface(self.studio, FluentIcon.VIDEO, "VOK Studio")
         self.addSubInterface(self.logs, FluentIcon.FOLDER, "Logs")
         self.navigationInterface.addSeparator()
         self.addSubInterface(

@@ -29,8 +29,6 @@ from .base import BaseView
 # Constants
 # ---------------------------------------------------------------------------
 
-SECTION_SPACING   = 20
-CARD_PADDING      = 22
 FEATURE_ICON_SIZE = 32
 GRID_SPACING      = 14
 
@@ -69,10 +67,10 @@ class DashboardView(BaseView):
         banner.open_folder_requested.connect(self._open_download_folder)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.addWidget(banner)
+        
 
     def _add_feature_grid(self):
         """2x2 grid of feature/tool cards."""
-        self._layout.setContentsMargins(24, 20, 24, 24)
         self._layout.addWidget(SubtitleLabel("Included Tools & Features"))
 
         grid = QGridLayout()
@@ -93,6 +91,7 @@ class DashboardView(BaseView):
         card = CardWidget(self)
         root = QVBoxLayout(card)
         root.setSpacing(8)
+        card.setContentsMargins(10, 10, 10, 10)
 
         icon_w = IconWidget(icon, card)
         icon_w.setFixedSize(FEATURE_ICON_SIZE, FEATURE_ICON_SIZE)
@@ -112,7 +111,6 @@ class DashboardView(BaseView):
         """How-to-use card with steps and optional images."""
         card = CardWidget(self)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(CARD_PADDING + 4, CARD_PADDING + 4, CARD_PADDING + 4, CARD_PADDING + 4)
         layout.setSpacing(12)
         layout.addWidget(SubtitleLabel("How to use", card))
         layout.addSpacing(4)
