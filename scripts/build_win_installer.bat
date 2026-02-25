@@ -109,6 +109,9 @@ REM Write .iss in parts to avoid "install" parse errors inside ( ) blocks
 >> "%ISS_FILE%" echo UninstallDisplayIcon={app}\VOK.exe
 >> "%ISS_FILE%" echo PrivilegesRequired=admin
 >> "%ISS_FILE%" echo ArchitecturesInstallIn64BitMode=x64
+>> "%ISS_FILE%" echo AppMutex=VOK_MUTEX
+>> "%ISS_FILE%" echo CloseApplications=yes
+>> "%ISS_FILE%" echo RestartApplications=no
 >> "%ISS_FILE%" echo VersionInfoVersion=%VERSION%
 >> "%ISS_FILE%" echo VersionInfoCompany=VOK
 >> "%ISS_FILE%" echo VersionInfoDescription=VOK Application

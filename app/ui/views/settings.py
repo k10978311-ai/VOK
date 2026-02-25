@@ -1,7 +1,9 @@
 """Settings view: Fluent UI setting cards."""
 
+import app
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QFileDialog, QHBoxLayout
+from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QMessageBox
 
 from qfluentwidgets import (
     ComboBox,
@@ -24,11 +26,41 @@ from qfluentwidgets import (
 from app.common.paths import get_default_downloads_dir
 from app.common.state import add_log_entry
 from app.config import load_settings, save_settings
+from app.core.updater import check_update, download_update, install_update
 from app.ui.theme import apply_app_palette
 
 from .base import BaseView
 
 _THEME_MAP = {"Auto": Theme.AUTO, "Light": Theme.LIGHT, "Dark": Theme.DARK}
+
+
+class UpdateCheckWorker(QThread):
+    """Check GitHub Releases for a newer version."""
+    result_ready = pyqtSignal(object, object)  # (version or None, download_url or None)
+
+    def run(self):
+        version, url = check_update(app.__version__)
+        self.result_ready.emit(version, url)
+
+
+class UpdateDownloadWorker(QThread):
+    """Download the update installer to TEMP."""
+    progress_signal = pyqtSignal(int, int)  # current, total (0 if unknown)
+    done_signal = pyqtSignal(str)  # path
+    failed_signal = pyqtSignal()
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self._url = url
+
+    def run(self):
+        def progress(current, total):
+            self.progress_signal.emit(current, total or 0)
+        path = download_update(self._url, progress_callback=progress)
+        if path:
+            self.done_signal.emit(path)
+        else:
+            self.failed_signal.emit()
 
 
 class SettingsView(BaseView):
@@ -154,6 +186,24 @@ class SettingsView(BaseView):
 
         self._layout.addWidget(adv_group)
 
+        # ── Updates group ───────────────────────────────────────────────────
+        updates_group = SettingCardGroup("Updates", self)
+        update_card = SettingCard(
+            FluentIcon.SYNC,
+            "Check for updates",
+            "Check GitHub Releases for a new version and update in one click",
+        )
+        self._check_update_btn = PushButton("Check now")
+        self._check_update_btn.setIcon(FluentIcon.SYNC)
+        self._check_update_btn.clicked.connect(self._on_check_update_clicked)
+        update_card.hBoxLayout.addWidget(self._check_update_btn)
+        update_card.hBoxLayout.addSpacing(16)
+        updates_group.addSettingCard(update_card)
+        self._layout.addWidget(updates_group)
+
+        self._update_check_worker = None
+        self._update_download_worker = None
+
         # ── Actions ───────────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         self._save_btn = PrimaryPushButton("Save")
@@ -233,6 +283,64 @@ class SettingsView(BaseView):
         )
         if path:
             self._cookies_edit.setText(path)
+
+    def _on_check_update_clicked(self):
+        if self._update_check_worker and self._update_check_worker.isRunning():
+            return
+        self._check_update_btn.setEnabled(False)
+        self._update_check_worker = UpdateCheckWorker(self)
+        self._update_check_worker.result_ready.connect(self._on_update_check_result)
+        self._update_check_worker.finished.connect(lambda: self._check_update_btn.setEnabled(True))
+        self._update_check_worker.start()
+
+    def _on_update_check_result(self, version: str | None, download_url: str | None):
+        if version is None or download_url is None:
+            InfoBar.success(
+                title="No update",
+                content="You are on the latest version.",
+                isClosable=True,
+                duration=3000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
+            return
+        reply = QMessageBox.question(
+            self,
+            "Update available",
+            f"New version {version} is available.\n\nUpdate now? The app will close and the new version will be installed.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._check_update_btn.setEnabled(False)
+        self._update_download_worker = UpdateDownloadWorker(download_url, self)
+        self._update_download_worker.done_signal.connect(self._on_update_downloaded)
+        self._update_download_worker.failed_signal.connect(self._on_update_download_failed)
+        self._update_download_worker.finished.connect(lambda: self._check_update_btn.setEnabled(True))
+        self._update_download_worker.start()
+        InfoBar.success(
+            title="Downloading update",
+            content="The installer is downloading. The app will close when ready.",
+            isClosable=True,
+            duration=5000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self,
+        )
+
+    def _on_update_downloaded(self, path: str):
+        install_update(path)
+
+    def _on_update_download_failed(self):
+        self._check_update_btn.setEnabled(True)
+        InfoBar.error(
+            title="Update failed",
+            content="Could not download the update. Try again later.",
+            isClosable=True,
+            duration=4000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self,
+        )
 
     def _pick_accent_color(self):
         """Open ColorDialog and set accent color hex to the line edit."""
