@@ -21,6 +21,8 @@ from qfluentwidgets import (
     CardWidget,
     ComboBox,
     FluentIcon,
+    InfoBar,
+    InfoBarPosition,
     IndeterminateProgressBar,
     LineEdit,
     PlainTextEdit,
@@ -294,6 +296,16 @@ class DownloaderView(BaseView):
         self._preview_progress.setVisible(False)
         self._preview_btn.setEnabled(True)
         self._sel_status.setText(msg)
+        if not success:
+            title = "Not supported" if "not supported" in msg.lower() else "Preview failed"
+            InfoBar.warning(
+                title=title,
+                content=msg[:200] + ("…" if len(msg) > 200 else ""),
+                isClosable=True,
+                duration=6000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
 
     def _set_all_checks(self, state: bool):
         self._sel_table.setUpdatesEnabled(False)
@@ -395,6 +407,15 @@ class DownloaderView(BaseView):
         self._set_profile_extract_controls(True)
         if not success:
             self._log_append(msg)
+            title = "Not supported" if "not supported" in msg.lower() else "Extract failed"
+            InfoBar.warning(
+                title=title,
+                content=msg[:200] + ("…" if len(msg) > 200 else ""),
+                isClosable=True,
+                duration=6000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
         self._update_controls()
 
     # ── Download table helpers ─────────────────────────────────────────────
@@ -698,6 +719,15 @@ class DownloaderView(BaseView):
         add_log_entry("info" if success else "error", message)
         if not success:
             add_log_entry("info", "Skipped (error), continuing with next job.")
+            title = "Not supported" if "not supported" in message.lower() else "Download failed"
+            InfoBar.error(
+                title=title,
+                content=message[:200] + ("…" if len(message) > 200 else ""),
+                isClosable=True,
+                duration=6000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
         row = self._job_to_row.get(job_id)
         if row is not None and row < self._process_table.rowCount():
             status_item = self._process_table.item(row, 2)

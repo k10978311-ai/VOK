@@ -11,7 +11,7 @@ TranslateWorker     — translate text via MyMemory API (free, no key required)
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from app.core.download import normalize_url
+from app.core.download import check_unsupported_url, normalize_url
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,12 @@ class MetaFetchWorker(QThread):
         if note:
             self.log_line.emit(f"[info] {note}")
 
+        unsupported_msg = check_unsupported_url(url)
+        if unsupported_msg:
+            self.log_line.emit(f"[error] {unsupported_msg}")
+            self.finished_signal.emit(False, unsupported_msg)
+            return
+
         opts: dict = {
             "quiet": True,
             "no_warnings": True,
@@ -136,6 +142,12 @@ class CommentsWorker(QThread):
         url, note = normalize_url(self.url)
         if note:
             self.log_line.emit(f"[info] {note}")
+
+        unsupported_msg = check_unsupported_url(url)
+        if unsupported_msg:
+            self.log_line.emit(f"[error] {unsupported_msg}")
+            self.finished_signal.emit(False, unsupported_msg)
+            return
 
         opts: dict = {
             "quiet": True,
@@ -280,6 +292,12 @@ class PlaylistFetchWorker(QThread):
         url, note = normalize_url(self.url)
         if note:
             self.log_line.emit(f"[info] {note}")
+
+        unsupported_msg = check_unsupported_url(url)
+        if unsupported_msg:
+            self.log_line.emit(f"[error] {unsupported_msg}")
+            self.finished_signal.emit(False, unsupported_msg)
+            return
 
         opts: dict = {
             "quiet": True,

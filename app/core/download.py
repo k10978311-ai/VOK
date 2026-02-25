@@ -61,6 +61,25 @@ SUPPORTED_DOMAINS = (
 )
 
 # ---------------------------------------------------------------------------
+# Unsupported URL patterns (fail fast with a clear message instead of timeout)
+# ---------------------------------------------------------------------------
+_UNSUPPORTED_URL_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # Kuaishou profile / user pages — no yt-dlp extractor (see yt-dlp/yt-dlp#14010)
+    (re.compile(r"kuaishou\.com/profile/[^/?#]+", re.I), "Kuaishou profile pages are not supported. Paste a direct video link (e.g. https://www.kuaishou.com/f/...) when available."),
+    (re.compile(r"live\.kuaishou\.com/u/[^/?#]+", re.I), "Kuaishou live user pages are not supported. Use a direct video or livestream URL when available."),
+]
+
+
+def check_unsupported_url(url: str) -> str | None:
+    """If the URL is known to be unsupported, return a short error message; else None."""
+    url_lower = url.strip().lower()
+    for pattern, message in _UNSUPPORTED_URL_PATTERNS:
+        if pattern.search(url_lower):
+            return message
+    return None
+
+
+# ---------------------------------------------------------------------------
 # URL normalizers
 # Each entry is (pattern, replacement_fn).  The first match wins.
 # These fix embed/modal/share URLs that yt-dlp's extractors don't accept.
@@ -188,6 +207,13 @@ class DownloadWorker(QThread):
         url, rewrite_note = normalize_url(self.url)
         if rewrite_note:
             self.log_line.emit(f"[info] {rewrite_note}")
+
+        # Fail fast with a clear message for known-unsupported URLs (avoids generic timeout).
+        unsupported_msg = check_unsupported_url(url)
+        if unsupported_msg:
+            self.log_line.emit(f"[error] {unsupported_msg}")
+            self.finished_signal.emit(False, unsupported_msg, "", -1)
+            return
 
         os.makedirs(self.output_dir, exist_ok=True)
         out_tmpl = os.path.join(self.output_dir, "%(title)s.%(ext)s")
