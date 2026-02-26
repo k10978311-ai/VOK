@@ -1,4 +1,4 @@
-# VOK — Video Downloader & Social Analytics
+# VOK — Video Downloader
 
 A desktop application for downloading videos and scraping social media content, built with PyQt5 and a Fluent Design UI.
 
@@ -37,7 +37,7 @@ Or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to your 
 
 ### Option 1 — uv (recommended)
 ```bat
-git clone <repo-url>
+git clone https://github.com/k10978311-ai/VOK.git
 cd VOK
 uv sync
 uv run python run.py
@@ -45,7 +45,7 @@ uv run python run.py
 
 ### Option 2 — pip
 ```bat
-git clone <repo-url>
+git clone https://github.com/k10978311-ai/VOK.git
 cd VOK
 python -m venv .venv
 .venv\Scripts\activate
@@ -144,7 +144,7 @@ Export cookies from your browser using the [Get cookies.txt LOCALLY](https://chr
   - Unix: `./scripts/update-deps.sh`
 
 ---
-
+<!-- 
 ## License
 
-MIT
+MIT -->
