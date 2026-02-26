@@ -1,5 +1,3 @@
-"""Apply theme and palette so Fusion style and Qt widgets match light/dark and accent."""
-
 from PyQt5.QtGui import QColor, QPalette
 from PyQt5.QtWidgets import QApplication
 

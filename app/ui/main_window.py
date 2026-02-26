@@ -6,7 +6,7 @@ from app.common.paths import PROJECT_ROOT
 from app.config import load_settings
 
 from .views import DashboardView, DownloaderView, LogsView, SettingsView, VokStudioView
-
+from PyQt5.QtGui import QIcon
 
 class MainWindow(FluentWindow):
     """Fluent-style window with download and analytics tools."""
@@ -43,13 +43,12 @@ class MainWindow(FluentWindow):
 
     def initWindow(self):
         """Initialize window size, title, and position."""
-        self.resize(900, 640)
-        self.setMinimumSize(720, 480)
+        self.resize(1200, 840)
+        self.setMinimumSize(900, 840)
         self.setWindowTitle(f"VOK — Download (v{app.__version__})")
 
         logo_path = PROJECT_ROOT / "resources" / "icon.ico"
         if logo_path.exists():
-            from PyQt5.QtGui import QIcon
             self.setWindowIcon(QIcon(str(logo_path)))
 
         desktop = QApplication.desktop().availableGeometry()

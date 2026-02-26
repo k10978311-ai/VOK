@@ -1,5 +1,7 @@
 """Settings view: Fluent UI setting cards."""
 
+import webbrowser
+
 import app
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QColor
@@ -221,20 +223,64 @@ class SettingsView(BaseView):
 
         self._layout.addWidget(adv_group)
 
-        # ── Updates group ───────────────────────────────────────────────────
-        updates_group = SettingCardGroup("Updates", self)
-        update_card = SettingCard(
+        # ── Software update group ─────────────────────────────────────────
+        updates_group = SettingCardGroup("Software update", self)
+
+        auto_update_card = SettingCard(
             FluentIcon.SYNC,
-            "Check for updates",
-            "Check GitHub Releases for a new version and update in one click",
+            "Check for updates when the application starts",
+            "The new version will be more stable and have more features",
         )
-        self._check_update_btn = PushButton("Check now")
+        self._auto_update_switch = SwitchButton()
+        self._auto_update_switch.setChecked(True)
+        auto_update_card.hBoxLayout.addWidget(self._auto_update_switch)
+        auto_update_card.hBoxLayout.addSpacing(16)
+        updates_group.addSettingCard(auto_update_card)
+
+        self._layout.addWidget(updates_group)
+
+        # ── About group ───────────────────────────────────────────────────
+        about_group = SettingCardGroup("About", self)
+
+        help_card = SettingCard(
+            FluentIcon.HELP,
+            "Help",
+            "Report bugs, request features, or read the documentation on GitHub",
+        )
+        open_help_btn = PushButton("Open help page")
+        open_help_btn.clicked.connect(
+            lambda: webbrowser.open("https://github.com/k10978311-ai/VOK")
+        )
+        help_card.hBoxLayout.addWidget(open_help_btn)
+        help_card.hBoxLayout.addSpacing(16)
+        about_group.addSettingCard(help_card)
+
+        feedback_card = SettingCard(
+            FluentIcon.FEEDBACK,
+            "Provide feedback",
+            "Submit a bug report or feature request via GitHub Issues",
+        )
+        feedback_btn = PushButton("Provide feedback")
+        feedback_btn.clicked.connect(
+            lambda: webbrowser.open("https://github.com/k10978311-ai/VOK/issues")
+        )
+        feedback_card.hBoxLayout.addWidget(feedback_btn)
+        feedback_card.hBoxLayout.addSpacing(16)
+        about_group.addSettingCard(feedback_card)
+
+        about_card = SettingCard(
+            FluentIcon.INFO,
+            "About",
+            f"\u00a9 Copyright 2025, VOK Downloader \u2013 Version {app.__version__}",
+        )
+        self._check_update_btn = PushButton("Check update")
         self._check_update_btn.setIcon(FluentIcon.SYNC)
         self._check_update_btn.clicked.connect(self._on_check_update_clicked)
-        update_card.hBoxLayout.addWidget(self._check_update_btn)
-        update_card.hBoxLayout.addSpacing(16)
-        updates_group.addSettingCard(update_card)
-        self._layout.addWidget(updates_group)
+        about_card.hBoxLayout.addWidget(self._check_update_btn)
+        about_card.hBoxLayout.addSpacing(16)
+        about_group.addSettingCard(about_card)
+
+        self._layout.addWidget(about_group)
 
         self._update_check_worker = None
         self._update_download_worker = None
@@ -272,6 +318,7 @@ class SettingsView(BaseView):
         self._cookies_edit.setText(s.get("cookies_file", ""))
         self._sound_complete_switch.setChecked(s.get("sound_alert_on_complete", True))
         self._sound_error_switch.setChecked(s.get("sound_alert_on_error", True))
+        self._auto_update_switch.setChecked(s.get("auto_update_on_start", True))
 
     def _load_values(self) -> None:
         self._apply_settings_to_ui(load_settings())
@@ -303,6 +350,7 @@ class SettingsView(BaseView):
         s["cookies_file"] = self._cookies_edit.text().strip()
         s["sound_alert_on_complete"] = self._sound_complete_switch.isChecked()
         s["sound_alert_on_error"] = self._sound_error_switch.isChecked()
+        s["auto_update_on_start"] = self._auto_update_switch.isChecked()
         save_settings(s)
 
         setTheme(_THEME_MAP.get(theme_name, Theme.AUTO))

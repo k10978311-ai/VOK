@@ -9,11 +9,13 @@ from PyQt5.QtCore import Qt, QPoint, QTimer
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QSizePolicy,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
     Action,
@@ -30,6 +32,7 @@ from qfluentwidgets import (
     PrimaryPushButton,
     PushButton,
     RoundMenu,
+    ScrollArea,
     SwitchButton,
     SegmentedWidget,
     TableWidget,
@@ -63,12 +66,34 @@ URL_PLACEHOLDER_SELECTIVE = (
 )
 
 
-class DownloaderView(BaseView):
+class DownloaderView(QFrame):
     """Multi-job downloader: single URL, bulk URL list, and selective playlist download."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Downloader")
+        self.setObjectName("DownloaderView")
+        self.setFrameShape(QFrame.NoFrame)
+
+        # ── Outer layout: scroll area + fixed footer ──────────────────────
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self._scroll = ScrollArea(self)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._container = QWidget()
+        self._container.setObjectName("DownloaderViewContainer")
+        self._layout = QVBoxLayout(self._container)
+        self._layout.setContentsMargins(24, 24, 24, 24)
+        self._layout.setSpacing(16)
+        self._scroll.setWidget(self._container)
+        self._scroll.setStyleSheet(
+            "QScrollArea, QWidget#DownloaderViewContainer"
+            " { background: transparent; border: none; }"
+        )
+        outer.addWidget(self._scroll, 1)
 
         self._manager = DownloadManager(parent=self)
         self._manager.log_line.connect(self._on_job_log)
@@ -89,12 +114,14 @@ class DownloaderView(BaseView):
         self._build_bulk_card()
         self._build_selective_card()
         self._build_enhance_card()
-        self._build_path_panel()
+        # self._build_path_panel()
         self._build_format_card()
         self._build_progress()
         self._build_log_card()
 
         self._layout.addStretch(1)
+
+        self._build_footer_bar(outer)
 
         # Start with Single mode: only URL card visible
         self._bulk_card.setVisible(False)
@@ -117,7 +144,7 @@ class DownloaderView(BaseView):
         self._url_card = CardWidget(self)
         lay = QVBoxLayout(self._url_card)
         lay.setSpacing(10)
-        lay.addWidget(CardHeader(FluentIcon.LINK, "Video URL", self._url_card))
+        lay.addWidget(CardHeader(FluentIcon.LINK, "Video & Profile URL", self._url_card))
 
         url_row = QHBoxLayout()
         url_row.addWidget(BodyLabel("URL", self._url_card))
@@ -216,7 +243,7 @@ class DownloaderView(BaseView):
         card = CardWidget(self)
         lay = QVBoxLayout(card)
         lay.setSpacing(10)
-        lay.addWidget(CardHeader(FluentIcon.MEDIA, "Format & actions", card))
+        lay.addWidget(CardHeader(FluentIcon.MEDIA, "Format", card))
 
         fmt_row = QHBoxLayout()
         fmt_row.addWidget(BodyLabel("Format", card))
@@ -224,19 +251,39 @@ class DownloaderView(BaseView):
         self._format_combo.addItems(DOWNLOAD_FORMATS)
         fmt_row.addWidget(self._format_combo)
         fmt_row.addStretch(1)
-        self._jobs_label = BodyLabel("", card)
-        fmt_row.addWidget(self._jobs_label)
-        self._start_btn = PrimaryPushButton("Download", card)
-        self._start_btn.setIcon(FluentIcon.DOWNLOAD)
-        self._start_btn.clicked.connect(self._start_download)
-        self._stop_btn = PushButton("Stop all", card)
-        self._stop_btn.setIcon(FluentIcon.CANCEL)
-        self._stop_btn.clicked.connect(self._stop_all)
-        self._stop_btn.setEnabled(False)
-        fmt_row.addWidget(self._start_btn)
-        fmt_row.addWidget(self._stop_btn)
         lay.addLayout(fmt_row)
         self._layout.addWidget(card)
+
+    def _build_footer_bar(self, outer_layout: QVBoxLayout) -> None:
+        """Fixed footer bar with jobs count, Download and Stop all — always visible."""
+        footer = QWidget(self)
+        footer.setObjectName("FooterBar")
+        footer.setFixedHeight(56)
+        footer.setStyleSheet(
+            "QWidget#FooterBar { border-top: 1px solid rgba(128,128,128,0.2); }"
+        )
+        row = QHBoxLayout(footer)
+        row.setContentsMargins(24, 0, 24, 0)
+        row.setSpacing(10)
+
+        self._jobs_label = BodyLabel("", footer)
+        row.addStretch(1)
+        row.addWidget(self._jobs_label)
+
+        self._start_btn = PrimaryPushButton("Download", footer)
+        self._start_btn.setIcon(FluentIcon.DOWNLOAD)
+        self._start_btn.setFixedHeight(36)
+        self._start_btn.clicked.connect(self._start_download)
+
+        self._stop_btn = PushButton("Stop all", footer)
+        self._stop_btn.setIcon(FluentIcon.CANCEL)
+        self._stop_btn.setFixedHeight(36)
+        self._stop_btn.clicked.connect(self._stop_all)
+        self._stop_btn.setEnabled(False)
+
+        row.addWidget(self._start_btn)
+        row.addWidget(self._stop_btn)
+        outer_layout.addWidget(footer)
 
     def _build_progress(self):
         """Top progress bar removed; per-row progress in table only."""

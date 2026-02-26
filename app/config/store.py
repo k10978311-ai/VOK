@@ -35,6 +35,7 @@ _DEFAULTS = {
     "default_start_page": "Download",
     "sound_alert_on_complete": True,
     "sound_alert_on_error": True,
+    "auto_update_on_start": True,
 }
 
 
