@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="resources/images/home_tools.png" alt="VOK" width="280"/>
+  <img src="resources/logo.png" alt="VOK" width="280"/>
 </p>
-
-# VOK — Video Downloader
+<p align="center">
+  <strong>VOK — Video Downloader</strong>
+</p>
 
 <p align="center">
   <strong>Download from YouTube, TikTok, Pinterest & 1000+ platforms — fast, offline, free.</strong>
