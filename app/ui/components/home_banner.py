@@ -86,26 +86,54 @@ class HomeBanner(QWidget):
         tiles_row.setSpacing(12)
         tiles_row.setContentsMargins(0, 20, 20, 20)
 
-        tile_download = FeatureTile(
+        self._tile_download = FeatureTile(
             FluentIcon.DOWNLOAD, self.tr("Download"), self.tr("Paste a URL and start"), self
         )
-        tile_logs = FeatureTile(
+        self._tile_logs = FeatureTile(
             FluentIcon.FOLDER, self.tr("Logs"), self.tr("View downloaded files"), self
         )
-        tile_folder = FeatureTile(
+        self._tile_folder = FeatureTile(
             FluentIcon.FOLDER_ADD, self.tr("Open Folder"), self.tr("Browse your downloads"), self
         )
 
-        tile_download.clicked.connect(self.open_downloader_requested)
-        tile_logs.clicked.connect(self.open_logs_requested)
-        tile_folder.clicked.connect(self.open_folder_requested)
+        self._tile_download.clicked.connect(self.open_downloader_requested)
+        self._tile_logs.clicked.connect(self.open_logs_requested)
+        self._tile_folder.clicked.connect(self.open_folder_requested)
 
-        for tile in (tile_download, tile_logs, tile_folder):
+        for tile in (self._tile_download, self._tile_logs, self._tile_folder):
             tiles_row.addWidget(tile)
         tiles_row.addStretch(1)
         root.addLayout(tiles_row)
 
         self._update_label_colors()
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        from PyQt5.QtCore import QEvent
+        super().changeEvent(event)
+        if event.type() == QEvent.LanguageChange:
+            self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        if self._title:
+            self._title.setText(self.tr("VOK Downloader"))
+        if self._sub:
+            self._sub.setText(
+                self.tr(
+                    "Download from YouTube, TikTok, Pinterest & 1000+"
+                    " platforms — fast, offline, free."
+                )
+            )
+        self._github_btn.setToolTip(self.tr("View on GitHub"))
+        self._youtube_btn.setToolTip(self.tr("Watch tutorial on YouTube"))
+        if self._tile_download._title_lbl:
+            self._tile_download._title_lbl.setText(self.tr("Download"))
+            self._tile_download._desc_lbl.setText(self.tr("Paste a URL and start"))
+        if self._tile_logs._title_lbl:
+            self._tile_logs._title_lbl.setText(self.tr("Logs"))
+            self._tile_logs._desc_lbl.setText(self.tr("View downloaded files"))
+        if self._tile_folder._title_lbl:
+            self._tile_folder._title_lbl.setText(self.tr("Open Folder"))
+            self._tile_folder._desc_lbl.setText(self.tr("Browse your downloads"))
 
     def _on_theme_changed(self, _theme=None) -> None:
         self._update_label_colors()

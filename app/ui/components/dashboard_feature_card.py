@@ -32,11 +32,16 @@ class DashboardFeatureCard(CardWidget):
         icon_w.setFixedSize(ICON_SIZE, ICON_SIZE)
         root.addWidget(icon_w)
 
-        title_lbl = SubtitleLabel(title, self)
-        root.addWidget(title_lbl)
+        self._title_lbl = SubtitleLabel(title, self)
+        root.addWidget(self._title_lbl)
 
-        desc_lbl = CaptionLabel(description, self)
-        desc_lbl.setWordWrap(True)
-        root.addWidget(desc_lbl)
+        self._desc_lbl = CaptionLabel(description, self)
+        self._desc_lbl.setWordWrap(True)
+        root.addWidget(self._desc_lbl)
 
         root.addStretch(1)
+
+    def set_texts(self, title: str, description: str) -> None:
+        """Update title and description labels (used during retranslation)."""
+        self._title_lbl.setText(title)
+        self._desc_lbl.setText(description)

@@ -42,17 +42,38 @@ class DashboardFeatureGrid(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(SubtitleLabel(_section_title, self))
+        self._section_lbl = SubtitleLabel(_section_title, self)
+        layout.addWidget(self._section_lbl)
 
         grid = QGridLayout()
         grid.setContentsMargins(GRID_MARGINS, GRID_MARGINS, GRID_MARGINS, GRID_MARGINS)
         grid.setSpacing(GRID_SPACING)
 
+        self._feature_cards: list[DashboardFeatureCard] = []
         for i, (title, desc, icon) in enumerate(_features):
-            grid.addWidget(
-                DashboardFeatureCard(title, desc, icon, self),
-                i // 2,
-                i % 2,
-            )
+            card = DashboardFeatureCard(title, desc, icon, self)
+            self._feature_cards.append(card)
+            grid.addWidget(card, i // 2, i % 2)
 
         layout.addLayout(grid)
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        from PyQt5.QtCore import QEvent
+        super().changeEvent(event)
+        if event.type() == QEvent.LanguageChange:
+            self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        self._section_lbl.setText(self.tr("Included Tools & Features"))
+        _texts = (
+            (self.tr("Multi-Source Support"),
+             self.tr("1000+ sites: YouTube, TikTok, Pinterest & more.")),
+            (self.tr("Quality Selector"),
+             self.tr("Pick 4K, 1080p, 720p or audio-only (MP3/M4A).")),
+            (self.tr("Batch Download"),
+             self.tr("Paste multiple URLs or an entire playlist.")),
+            (self.tr("Smart File Naming"),
+             self.tr("Files saved by title/channel automatically.")),
+        )
+        for card, (title, desc) in zip(self._feature_cards, _texts):
+            card.set_texts(title, desc)

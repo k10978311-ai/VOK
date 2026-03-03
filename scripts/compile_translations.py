@@ -308,16 +308,24 @@ def write_ts(ts_path: Path, language: str, lookup: dict[str, str]) -> None:
 # .qm binary compiler
 # ---------------------------------------------------------------------------
 
-_QM_MAGIC = bytes([0x3C, 0xB8, 0x6A, 0x18])
+# Real Qt .qm magic (16 bytes)
+_QM_MAGIC = bytes([
+    0x3C, 0xB8, 0x64, 0x18,
+    0xCA, 0xEF, 0x9C, 0x95,
+    0xCD, 0x21, 0x1C, 0xBF,
+    0x60, 0xA1, 0xBD, 0xDD,
+])
 
 _TAG_END = 0x01
 _TAG_TRANSLATION = 0x03
+_TAG_COMMENT = 0x08
 _TAG_SOURCETEXT = 0x06
 _TAG_CONTEXT = 0x07
 
+_SEC_LANGUAGE = 0xA7
 _SEC_HASHES = 0x42
 _SEC_MESSAGES = 0x69
-_SEC_LANGUAGE = 0xA7
+_SEC_NUMERUSRULES = 0x88
 
 
 def _elf_hash(text: str) -> int:
@@ -332,7 +340,11 @@ def _elf_hash(text: str) -> int:
     return h if h else 1
 
 
-def _rec(tag: int, data: bytes) -> bytes:
+def _sec(tag: int, data: bytes) -> bytes:
+    return struct.pack("B", tag) + struct.pack(">I", len(data)) + data
+
+
+def _field(tag: int, data: bytes) -> bytes:
     return struct.pack("B", tag) + struct.pack(">I", len(data)) + data
 
 
@@ -343,6 +355,9 @@ def compile_ts(ts_path: Path, qm_path: Path) -> int:
 
     language: str = root.get("language", "")
     messages_data = b""
+    # Each entry: (lookup_hash, msg_offset)
+    # Qt lookup hash = elfHash(source) ^ elfHash(context)
+    # (comment/disambiguation is empty so contributes 0)
     hash_entries: list[tuple[int, int]] = []
 
     for ctx in root.findall("context"):
@@ -367,37 +382,30 @@ def compile_ts(ts_path: Path, qm_path: Path) -> int:
                 translation = source
 
             offset = len(messages_data)
-            hash_entries.append((_elf_hash(source), offset))
+            # Qt hash table uses elfHash(sourceText) only for index;
+            # context discrimination happens inside the message via tag comparison.
+            lookup_hash = _elf_hash(source)
+            hash_entries.append((lookup_hash, offset))
 
-            # Build message record
-            rec = b""
-            rec += _rec(_TAG_TRANSLATION, translation.encode("utf-16-be"))
-            rec += _rec(_TAG_SOURCETEXT, source.encode("utf-8"))
+            # Build message record — Qt message field order matters:
+            # 0x03 translation, 0x08 empty comment, 0x06 source, 0x07 context, 0x01 end
+            rec = _field(_TAG_TRANSLATION, translation.encode("utf-16-be"))
+            rec += _field(_TAG_COMMENT, b"")
+            rec += _field(_TAG_SOURCETEXT, source.encode("utf-8"))
             if ctx_name:
-                rec += _rec(_TAG_CONTEXT, ctx_name.encode("utf-8"))
+                rec += _field(_TAG_CONTEXT, ctx_name.encode("utf-8"))
             rec += struct.pack("B", _TAG_END)
             messages_data += rec
 
+    # Qt requires the hash table sorted by hash value for binary search
     hash_entries.sort(key=lambda e: e[0])
     hashes_data = b"".join(struct.pack(">II", h, off) for h, off in hash_entries)
 
     output = _QM_MAGIC
     if language:
-        output += (
-            struct.pack("B", _SEC_LANGUAGE)
-            + struct.pack(">I", len(language.encode("utf-8")))
-            + language.encode("utf-8")
-        )
-    output += (
-        struct.pack("B", _SEC_HASHES)
-        + struct.pack(">I", len(hashes_data))
-        + hashes_data
-    )
-    output += (
-        struct.pack("B", _SEC_MESSAGES)
-        + struct.pack(">I", len(messages_data))
-        + messages_data
-    )
+        output += _sec(_SEC_LANGUAGE, language.encode("utf-8"))
+    output += _sec(_SEC_HASHES, hashes_data)
+    output += _sec(_SEC_MESSAGES, messages_data)
 
     qm_path.write_bytes(output)
     return len(hash_entries)

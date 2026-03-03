@@ -48,16 +48,36 @@ class DashboardInstructionsCard(CardWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(LAYOUT_SPACING)
         layout.setContentsMargins(*LAYOUT_MARGINS)
-        layout.addWidget(SubtitleLabel(_title, self))
+
+        self._title_lbl = SubtitleLabel(_title, self)
+        layout.addWidget(self._title_lbl)
         layout.addSpacing(STEP_SPACING)
 
+        self._step_labels: list[BodyLabel] = []
         for text in _steps:
             lbl = BodyLabel(text, self)
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
+            self._step_labels.append(lbl)
 
         if self._instructions_dir.exists():
             self._add_instruction_images(layout)
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        from PyQt5.QtCore import QEvent
+        super().changeEvent(event)
+        if event.type() == QEvent.LanguageChange:
+            self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        self._title_lbl.setText(self.tr("How to use"))
+        _steps = (
+            self.tr("1. Copy a video URL from your browser."),
+            self.tr("2. Go to the Download tab, paste the URL, and choose your format."),
+            self.tr("3. Click Download — track progress in the Logs tab."),
+        )
+        for lbl, text in zip(self._step_labels, _steps):
+            lbl.setText(text)
 
     def _add_instruction_images(self, layout: QVBoxLayout) -> None:
         """Append instruction images (step1.png, step2.png, …) from instructions dir."""

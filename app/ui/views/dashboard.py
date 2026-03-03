@@ -27,6 +27,12 @@ class DashboardView(BaseView):
         self.setWindowTitle(self.tr("Dashboard"))
         self._build_ui()
 
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        from PyQt5.QtCore import QEvent
+        super().changeEvent(event)
+        if event.type() == QEvent.LanguageChange:
+            self.setWindowTitle(self.tr("Dashboard"))
+
     CONTENT_MARGINS = (24, 0, 24, 24)
 
     def _build_ui(self) -> None:
