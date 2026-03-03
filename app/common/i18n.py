@@ -21,12 +21,12 @@ LANGUAGES: dict[str, str] = {
     "Português": "pt_BR",
     "한국어": "ko_KR",
     "العربية": "ar_SA",
-    "ภาษาไทย": "th_TH",
+    "ភាសាខ្មែរ": "km_KH",
 }
 
 # Languages that have compiled .qm files bundled with the app.
 AVAILABLE_LOCALES: frozenset[str] = frozenset(
-    {"zh_CN", "ja_JP", "ko_KR", "ru_RU", "th_TH"}
+    {"zh_CN", "ja_JP", "ko_KR", "ru_RU", "km_KH"}
 )
 
 # Internal attribute names used to keep translator references alive

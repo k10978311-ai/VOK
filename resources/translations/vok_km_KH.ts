@@ -1,112 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="th_TH">
+<TS version="2.1" language="km_KH">
     <context>
         <name>DashboardFeatureGrid</name>
         <message>
             <source>Included Tools &amp; Features</source>
-            <translation>เครื่องมือและคุณสมบัติ</translation>
+            <translation>ឧបករណ៍ និងមុខងារ</translation>
         </message>
         <message>
             <source>Multi-Source Support</source>
-            <translation>รองรับหลายแหล่ง</translation>
+            <translation>គាំទ្រប្រភពច្រើន</translation>
         </message>
         <message>
             <source>1000+ sites: YouTube, TikTok, Pinterest &amp; more.</source>
-            <translation>1000+ เว็บไซต์: YouTube, TikTok, Pinterest และอื่นๆ</translation>
+            <translation>1000+ គេហទំព័រ: YouTube, TikTok, Pinterest និងច្រើនទៀត</translation>
         </message>
         <message>
             <source>Quality Selector</source>
-            <translation>เลือกคุณภาพ</translation>
+            <translation>ជ្រើសរើសគុណភាព</translation>
         </message>
         <message>
             <source>Pick 4K, 1080p, 720p or audio-only (MP3/M4A).</source>
-            <translation>เลือก 4K, 1080p, 720p หรือเฉพาะเสียง (MP3/M4A)</translation>
+            <translation>ជ្រើស 4K, 1080p, 720p ឬដែលមានតែសំឡេង (MP3/M4A)</translation>
         </message>
         <message>
             <source>Batch Download</source>
-            <translation>ดาวน์โหลดหลายรายการ</translation>
+            <translation>ទាញយកជាបាច់</translation>
         </message>
         <message>
             <source>Paste multiple URLs or an entire playlist.</source>
-            <translation>วางหลาย URL หรือเพลย์ลิสต์ทั้งหมด</translation>
+            <translation>បិទ URL ច្រើន ឬបញ្ជីចាក់ទាំងមូល</translation>
         </message>
         <message>
             <source>Smart File Naming</source>
-            <translation>ตั้งชื่อไฟล์อัตโนมัติ</translation>
+            <translation>ដាក់ឈ្មោះឯកសារស្វ័យប្រវត្តិ</translation>
         </message>
         <message>
             <source>Files saved by title/channel automatically.</source>
-            <translation>บันทึกไฟล์ตามชื่อ/ช่องอัตโนมัติ</translation>
+            <translation>ឯកសារត្រូវបានរក្សាទុកដោយចំណងជើង/ប៉ុស្តិ៍ដោយស្វ័យប្រវត្តិ</translation>
         </message>
     </context>
     <context>
         <name>DashboardInstructionsCard</name>
         <message>
             <source>How to use</source>
-            <translation>วิธีใช้</translation>
+            <translation>របៀបប្រើ</translation>
         </message>
         <message>
             <source>1. Copy a video URL from your browser.</source>
-            <translation>1. คัดลอก URL วิดีโอจากเบราว์เซอร์ของคุณ</translation>
+            <translation>1. ចម្លង URL វីដេអូពីកម្មវិធីរុករករបស់អ្នក</translation>
         </message>
         <message>
             <source>2. Go to the Download tab, paste the URL, and choose your format.</source>
-            <translation>2. ไปที่แท็บดาวน์โหลด วาง URL และเลือกรูปแบบ</translation>
+            <translation>2. ចូលទៅផ្ទាំង ទាញយក បិទ URL ហើយជ្រើសទម្រង់</translation>
         </message>
         <message>
             <source>3. Click Download — track progress in the Logs tab.</source>
-            <translation>3. คลิกดาวน์โหลด — ติดตามความคืบหน้าในแท็บบันทึก</translation>
+            <translation>3. ចុច ទាញយក — តាមដានវឌ្ឍនភាពនៅផ្ទាំង កំណត់ហេតុ</translation>
         </message>
     </context>
     <context>
         <name>DashboardView</name>
         <message>
             <source>Dashboard</source>
-            <translation>แดชบอร์ด</translation>
+            <translation>ផ្ទាំងគ្រប់គ្រង</translation>
         </message>
     </context>
     <context>
         <name>HomeBanner</name>
         <message>
             <source>VOK Downloader</source>
-            <translation>VOK ดาวน์โหลดเดอร์</translation>
+            <translation>VOK កម្មវិធីទាញយក</translation>
         </message>
         <message>
             <source>View on GitHub</source>
-            <translation>ดูบน GitHub</translation>
+            <translation>មើលនៅ GitHub</translation>
         </message>
         <message>
             <source>Watch tutorial on YouTube</source>
-            <translation>ดูบทช่วยสอนบน YouTube</translation>
+            <translation>មើលការណែនាំនៅ YouTube</translation>
         </message>
         <message>
             <source>Download from YouTube, TikTok, Pinterest &amp; 1000+ platforms — fast, offline, free.</source>
-            <translation>ดาวน์โหลดจาก YouTube, TikTok, Pinterest และ 1000+ แพลตฟอร์ม — รวดเร็ว, ออฟไลน์, ฟรี</translation>
+            <translation>ទាញយកពី YouTube, TikTok, Pinterest និង 1000+ វេទិកា — លឿន, គ្មានអ៊ីនធឺណិត, ឥតគិតថ្លៃ</translation>
         </message>
         <message>
             <source>Download</source>
-            <translation>ดาวน์โหลด</translation>
+            <translation>ទាញយក</translation>
         </message>
         <message>
             <source>Paste a URL and start</source>
-            <translation>วาง URL และเริ่มต้น</translation>
+            <translation>បិទ URL ហើយចាប់ផ្តើម</translation>
         </message>
         <message>
             <source>Logs</source>
-            <translation>บันทึก</translation>
+            <translation>កំណត់ហេតុ</translation>
         </message>
         <message>
             <source>View downloaded files</source>
-            <translation>ดูไฟล์ที่ดาวน์โหลด</translation>
+            <translation>មើលឯកសារដែលបានទាញយក</translation>
         </message>
         <message>
             <source>Open Folder</source>
-            <translation>เปิดโฟลเดอร์</translation>
+            <translation>បើកថត</translation>
         </message>
         <message>
             <source>Browse your downloads</source>
-            <translation>เรียกดูการดาวน์โหลด</translation>
+            <translation>រុករកការទាញយករបស់អ្នក</translation>
         </message>
     </context>
 </TS>

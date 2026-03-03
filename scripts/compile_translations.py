@@ -198,51 +198,51 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "Open Folder": "Открыть папку",
         "Browse your downloads": "Просмотр загрузок",
     },
-    "th_TH": {
-        "Included Tools & Features": "เครื่องมือและคุณสมบัติ",
-        "Multi-Source Support": "รองรับหลายแหล่ง",
+    "km_KH": {
+        "Included Tools & Features": "ឧបករណ៍ និងមុខងារ",
+        "Multi-Source Support": "គាំទ្រប្រភពច្រើន",
         "1000+ sites: YouTube, TikTok, Pinterest & more.": (
-            "1000+ เว็บไซต์: YouTube, TikTok, Pinterest และอื่นๆ"
+            "1000+ គេហទំព័រ: YouTube, TikTok, Pinterest និងច្រើនទៀត"
         ),
-        "Quality Selector": "เลือกคุณภาพ",
+        "Quality Selector": "ជ្រើសរើសគុណភាព",
         "Pick 4K, 1080p, 720p or audio-only (MP3/M4A).": (
-            "เลือก 4K, 1080p, 720p หรือเฉพาะเสียง (MP3/M4A)"
+            "ជ្រើស 4K, 1080p, 720p ឬដែលមានតែសំឡេង (MP3/M4A)"
         ),
-        "Batch Download": "ดาวน์โหลดหลายรายการ",
+        "Batch Download": "ទាញយកជាបាច់",
         "Paste multiple URLs or an entire playlist.": (
-            "วางหลาย URL หรือเพลย์ลิสต์ทั้งหมด"
+            "បិទ URL ច្រើន ឬបញ្ជីចាក់ទាំងមូល"
         ),
-        "Smart File Naming": "ตั้งชื่อไฟล์อัตโนมัติ",
+        "Smart File Naming": "ដាក់ឈ្មោះឯកសារស្វ័យប្រវត្តិ",
         "Files saved by title/channel automatically.": (
-            "บันทึกไฟล์ตามชื่อ/ช่องอัตโนมัติ"
+            "ឯកសារត្រូវបានរក្សាទុកដោយចំណងជើង/ប៉ុស្តិ៍ដោយស្វ័យប្រវត្តិ"
         ),
-        "How to use": "วิธีใช้",
+        "How to use": "របៀបប្រើ",
         "1. Copy a video URL from your browser.": (
-            "1. คัดลอก URL วิดีโอจากเบราว์เซอร์ของคุณ"
+            "1. ចម្លង URL វីដេអូពីកម្មវិធីរុករករបស់អ្នក"
         ),
         "2. Go to the Download tab, paste the URL, and choose your format.": (
-            "2. ไปที่แท็บดาวน์โหลด วาง URL และเลือกรูปแบบ"
+            "2. ចូលទៅផ្ទាំង ទាញយក បិទ URL ហើយជ្រើសទម្រង់"
         ),
         "3. Click Download — track progress in the Logs tab.": (
-            "3. คลิกดาวน์โหลด — ติดตามความคืบหน้าในแท็บบันทึก"
+            "3. ចុច ទាញយក — តាមដានវឌ្ឍនភាពនៅផ្ទាំង កំណត់ហេតុ"
         ),
-        "Dashboard": "แดชบอร์ด",
-        "VOK Downloader": "VOK ดาวน์โหลดเดอร์",
-        "View on GitHub": "ดูบน GitHub",
-        "Watch tutorial on YouTube": "ดูบทช่วยสอนบน YouTube",
+        "Dashboard": "ផ្ទាំងគ្រប់គ្រង",
+        "VOK Downloader": "VOK កម្មវិធីទាញយក",
+        "View on GitHub": "មើលនៅ GitHub",
+        "Watch tutorial on YouTube": "មើលការណែនាំនៅ YouTube",
         (
             "Download from YouTube, TikTok, Pinterest & 1000+ platforms"
             " \u2014 fast, offline, free."
         ): (
-            "ดาวน์โหลดจาก YouTube, TikTok, Pinterest และ 1000+ แพลตฟอร์ม"
-            " — รวดเร็ว, ออฟไลน์, ฟรี"
+            "ទាញយកពី YouTube, TikTok, Pinterest និង 1000+ វេទិកា"
+            " — លឿន, គ្មានអ៊ីនធឺណិត, ឥតគិតថ្លៃ"
         ),
-        "Download": "ดาวน์โหลด",
-        "Paste a URL and start": "วาง URL และเริ่มต้น",
-        "Logs": "บันทึก",
-        "View downloaded files": "ดูไฟล์ที่ดาวน์โหลด",
-        "Open Folder": "เปิดโฟลเดอร์",
-        "Browse your downloads": "เรียกดูการดาวน์โหลด",
+        "Download": "ទាញយក",
+        "Paste a URL and start": "បិទ URL ហើយចាប់ផ្តើម",
+        "Logs": "កំណត់ហេតុ",
+        "View downloaded files": "មើលឯកសារដែលបានទាញយក",
+        "Open Folder": "បើកថត",
+        "Browse your downloads": "រុករកការទាញយករបស់អ្នក",
     },
 }
 
@@ -423,7 +423,7 @@ _LOCALE_MAP = {
     "ja_JP": "ja_JP",
     "ko_KR": "ko_KR",
     "ru_RU": "ru_RU",
-    "th_TH": "th_TH",
+    "km_KH": "km_KH",
 }
 
 
