@@ -91,258 +91,420 @@ class UpdateDownloadWorker(QThread):
 class SettingsView(BaseView):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
+        self._update_check_worker = None
+        self._update_download_worker = None
+        self._build_ui()
+        self._load_values()
+        self._connect_auto_save()
 
-        title = LargeTitleLabel(self)
-        title.setText("Settings")
-        self._layout.addWidget(title)
+    # ── UI construction ───────────────────────────────────────────────────
+
+    def _build_ui(self) -> None:
+        self.setWindowTitle(self.tr("Settings"))
+
+        self._title_lbl = LargeTitleLabel(self)
+        self._title_lbl.setText(self.tr("Settings"))
+        self._layout.addWidget(self._title_lbl)
         self._layout.addSpacing(4)
 
         # ── Download group ────────────────────────────────────────────────
-        dl_group = SettingCardGroup("Downloads", self)
+        self._dl_group = SettingCardGroup(self.tr("Downloads"), self)
 
         self._path_push_card = PushSettingCard(
-            text="Choose",
+            text=self.tr("Choose"),
             icon=FluentIcon.FOLDER,
-            title="Download path",
+            title=self.tr("Download path"),
             content=str(get_default_downloads_dir()),
         )
         self._path_push_card.clicked.connect(self._browse_path)
-        dl_group.addSettingCard(self._path_push_card)
+        self._dl_group.addSettingCard(self._path_push_card)
 
-        format_card = SettingCard(
+        self._format_card = SettingCard(
             FluentIcon.MEDIA,
-            "Default download format",
-            "Video/audio quality and container used for new downloads",
+            self.tr("Default download format"),
+            self.tr("Video/audio quality and container used for new downloads"),
         )
         self._format_combo = ComboBox()
         self._format_combo.addItems(DOWNLOAD_FORMATS)
         self._format_combo.setFixedWidth(175)
-        format_card.hBoxLayout.addWidget(self._format_combo)
-        format_card.hBoxLayout.addSpacing(16)
-        dl_group.addSettingCard(format_card)
+        self._format_card.hBoxLayout.addWidget(self._format_combo)
+        self._format_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._format_card)
 
-        single_card = SettingCard(
+        self._single_card = SettingCard(
             FluentIcon.VIDEO,
-            "Single video only (no playlists)",
-            "Download only the current video; skip playlists when a single URL is used.",
+            self.tr("Single video only (no playlists)"),
+            self.tr(
+                "Download only the current video; skip playlists"
+                " when a single URL is used."
+            ),
         )
         self._single_switch = SwitchButton()
-        single_card.hBoxLayout.addWidget(self._single_switch)
-        single_card.hBoxLayout.addSpacing(16)
-        dl_group.addSettingCard(single_card)
+        self._single_card.hBoxLayout.addWidget(self._single_switch)
+        self._single_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._single_card)
 
-        mode_card = SettingCard(
+        self._mode_card = SettingCard(
             FluentIcon.DOWNLOAD,
-            "Download mode",
-            "Normal or enhanced download.",
+            self.tr("Download mode"),
+            self.tr("Normal or enhanced download."),
         )
         self._mode_segmented = SegmentedWidget()
-        self._mode_segmented.insertItem(0, "normal", "Normal", None)
-        self._mode_segmented.insertItem(1, "enhance", "Enhance", self._on_enhance_mode_clicked)
+        self._mode_segmented.insertItem(0, "normal", self.tr("Normal"), None)
+        self._mode_segmented.insertItem(
+            1, "enhance", self.tr("Enhance"), self._on_enhance_mode_clicked
+        )
         self._mode_segmented.setCurrentItem("normal")
-        mode_card.hBoxLayout.addWidget(self._mode_segmented)
-        mode_card.hBoxLayout.addSpacing(16)
-        dl_group.addSettingCard(mode_card)
+        self._mode_card.hBoxLayout.addWidget(self._mode_segmented)
+        self._mode_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._mode_card)
 
-        sound_complete_card = SettingCard(
+        self._sound_complete_card = SettingCard(
             FluentIcon.MUSIC,
-            "Sound alert on completed download",
-            "Play a sound when a download finishes successfully.",
+            self.tr("Sound alert on completed download"),
+            self.tr("Play a sound when a download finishes successfully."),
         )
         self._sound_complete_switch = SwitchButton()
         self._sound_complete_switch.setChecked(True)
-        sound_complete_card.hBoxLayout.addWidget(self._sound_complete_switch)
-        sound_complete_card.hBoxLayout.addSpacing(16)
-        dl_group.addSettingCard(sound_complete_card)
+        self._sound_complete_card.hBoxLayout.addWidget(self._sound_complete_switch)
+        self._sound_complete_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._sound_complete_card)
 
-        sound_error_card = SettingCard(
+        self._sound_error_card = SettingCard(
             FluentIcon.IOT,
-            "Sound alert on download error",
-            "Play a sound when a download fails or is skipped.",
+            self.tr("Sound alert on download error"),
+            self.tr("Play a sound when a download fails or is skipped."),
         )
         self._sound_error_switch = SwitchButton()
         self._sound_error_switch.setChecked(True)
-        sound_error_card.hBoxLayout.addWidget(self._sound_error_switch)
-        sound_error_card.hBoxLayout.addSpacing(16)
-        dl_group.addSettingCard(sound_error_card)
+        self._sound_error_card.hBoxLayout.addWidget(self._sound_error_switch)
+        self._sound_error_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._sound_error_card)
 
-        self._layout.addWidget(dl_group)
+        self._layout.addWidget(self._dl_group)
 
         # ── Performance group ─────────────────────────────────────────────
-        perf_group = SettingCardGroup("Performance", self)
+        self._perf_group = SettingCardGroup(self.tr("Performance"), self)
 
-        conc_card = SettingCard(
+        self._conc_card = SettingCard(
             FluentIcon.DOWNLOAD,
-            "Concurrent downloads",
-            "Number of parallel download jobs (1 – 4)",
+            self.tr("Concurrent downloads"),
+            self.tr("Number of parallel download jobs (1 \u2013 4)"),
         )
         self._conc_combo = ComboBox()
         self._conc_combo.addItems(["1", "2", "3", "4"])
         self._conc_combo.setFixedWidth(80)
-        conc_card.hBoxLayout.addWidget(self._conc_combo)
-        conc_card.hBoxLayout.addSpacing(16)
-        perf_group.addSettingCard(conc_card)
+        self._conc_card.hBoxLayout.addWidget(self._conc_combo)
+        self._conc_card.hBoxLayout.addSpacing(16)
+        self._perf_group.addSettingCard(self._conc_card)
 
-        frag_card = SettingCard(
+        self._frag_card = SettingCard(
             FluentIcon.SPEED_HIGH,
-            "Concurrent fragments",
-            "Fragment threads per download job (1 – 16)",
+            self.tr("Concurrent fragments"),
+            self.tr("Fragment threads per download job (1 \u2013 16)"),
         )
         self._frag_combo = ComboBox()
         self._frag_combo.addItems([str(i) for i in range(1, 17)])
         self._frag_combo.setFixedWidth(80)
-        frag_card.hBoxLayout.addWidget(self._frag_combo)
-        frag_card.hBoxLayout.addSpacing(16)
-        perf_group.addSettingCard(frag_card)
+        self._frag_card.hBoxLayout.addWidget(self._frag_combo)
+        self._frag_card.hBoxLayout.addSpacing(16)
+        self._perf_group.addSettingCard(self._frag_card)
 
-        self._layout.addWidget(perf_group)
+        self._layout.addWidget(self._perf_group)
 
         # ── Appearance group ──────────────────────────────────────────────
-        appear_group = SettingCardGroup("Appearance", self)
+        self._appear_group = SettingCardGroup(self.tr("Appearance"), self)
 
         self._theme_card = OptionsSettingCard(
             vok_config.themeMode,
             FluentIcon.BRUSH,
-            "Application theme",
-            "Adjust the appearance of your application",
-            texts=["Light", "Dark", "Follow system settings"],
+            self.tr("Application theme"),
+            self.tr("Adjust the appearance of your application"),
+            texts=[
+                self.tr("Light"),
+                self.tr("Dark"),
+                self.tr("Follow system settings"),
+            ],
             parent=self,
         )
         self._theme_card.optionChanged.connect(self._on_theme_option_changed)
-        appear_group.addSettingCard(self._theme_card)
+        self._appear_group.addSettingCard(self._theme_card)
 
-        language_card = SettingCard(
+        self._language_card = SettingCard(
             FluentIcon.LANGUAGE,
-            "Language",
-            "Application display language (restart may be needed for full effect)",
+            self.tr("Language"),
+            self.tr(
+                "Application display language"
+                " (restart may be needed for full effect)"
+            ),
         )
         self._language_combo = ComboBox()
         self._language_combo.addItems(list(LANGUAGES.keys()))
         self._language_combo.setFixedWidth(175)
-        language_card.hBoxLayout.addWidget(self._language_combo)
-        language_card.hBoxLayout.addSpacing(16)
-        appear_group.addSettingCard(language_card)
+        self._language_card.hBoxLayout.addWidget(self._language_combo)
+        self._language_card.hBoxLayout.addSpacing(16)
+        self._appear_group.addSettingCard(self._language_card)
 
-        color_card = SettingCard(
+        self._color_card = SettingCard(
             FluentIcon.PALETTE,
-            "Accent color",
-            "Hex color used as the application accent (e.g. #0078D4)",
+            self.tr("Accent color"),
+            self.tr(
+                "Hex color used as the application accent (e.g. #0078D4)"
+            ),
         )
         self._color_edit = LineEdit()
         self._color_edit.setFixedWidth(120)
         self._color_edit.setPlaceholderText("#0078D4")
-        color_btn = PushButton("Choose…")
-        color_btn.clicked.connect(self._pick_accent_color)
-        color_card.hBoxLayout.addWidget(self._color_edit)
-        color_card.hBoxLayout.addSpacing(8)
-        color_card.hBoxLayout.addWidget(color_btn)
-        color_card.hBoxLayout.addSpacing(16)
-        appear_group.addSettingCard(color_card)
+        self._color_btn = PushButton(self.tr("Choose\u2026"))
+        self._color_btn.clicked.connect(self._pick_accent_color)
+        self._color_card.hBoxLayout.addWidget(self._color_edit)
+        self._color_card.hBoxLayout.addSpacing(8)
+        self._color_card.hBoxLayout.addWidget(self._color_btn)
+        self._color_card.hBoxLayout.addSpacing(16)
+        self._appear_group.addSettingCard(self._color_card)
 
-        self._layout.addWidget(appear_group)
+        self._layout.addWidget(self._appear_group)
 
         # ── Advanced group ────────────────────────────────────────────────
-        adv_group = SettingCardGroup("Advanced", self)
+        self._adv_group = SettingCardGroup(self.tr("Advanced"), self)
 
-        cookies_card = SettingCard(
+        self._cookies_card = SettingCard(
             FluentIcon.CERTIFICATE,
-            "Cookies file",
-            "Netscape cookies.txt for sites that require login "
-            "(ok.ru private, Instagram, etc.)",
+            self.tr("Cookies file"),
+            self.tr(
+                "Netscape cookies.txt for sites that require login"
+                " (ok.ru private, Instagram, etc.)"
+            ),
         )
         self._cookies_edit = LineEdit()
         self._cookies_edit.setMinimumWidth(240)
-        self._cookies_edit.setPlaceholderText("Path to cookies.txt (optional)")
-        self._cookies_edit.setClearButtonEnabled(True)
-        cookies_browse_btn = PushButton("Browse…")
-        cookies_browse_btn.clicked.connect(self._browse_cookies)
-        cookies_card.hBoxLayout.addWidget(self._cookies_edit)
-        cookies_card.hBoxLayout.addSpacing(8)
-        cookies_card.hBoxLayout.addWidget(cookies_browse_btn)
-        cookies_card.hBoxLayout.addSpacing(16)
-        adv_group.addSettingCard(cookies_card)
-
-        reset_card = SettingCard(
-            FluentIcon.SYNC,
-            "Reset settings",
-            "Restore all settings to their factory defaults",
+        self._cookies_edit.setPlaceholderText(
+            self.tr("Path to cookies.txt (optional)")
         )
-        self._reset_btn = PushButton("Reset to defaults")
+        self._cookies_edit.setClearButtonEnabled(True)
+        self._cookies_browse_btn = PushButton(self.tr("Browse\u2026"))
+        self._cookies_browse_btn.clicked.connect(self._browse_cookies)
+        self._cookies_card.hBoxLayout.addWidget(self._cookies_edit)
+        self._cookies_card.hBoxLayout.addSpacing(8)
+        self._cookies_card.hBoxLayout.addWidget(self._cookies_browse_btn)
+        self._cookies_card.hBoxLayout.addSpacing(16)
+        self._adv_group.addSettingCard(self._cookies_card)
+
+        self._reset_card = SettingCard(
+            FluentIcon.SYNC,
+            self.tr("Reset settings"),
+            self.tr("Restore all settings to their factory defaults"),
+        )
+        self._reset_btn = PushButton(self.tr("Reset to defaults"))
         self._reset_btn.setIcon(FluentIcon.SYNC)
         self._reset_btn.clicked.connect(self._reset)
-        reset_card.hBoxLayout.addWidget(self._reset_btn)
-        reset_card.hBoxLayout.addSpacing(16)
-        adv_group.addSettingCard(reset_card)
+        self._reset_card.hBoxLayout.addWidget(self._reset_btn)
+        self._reset_card.hBoxLayout.addSpacing(16)
+        self._adv_group.addSettingCard(self._reset_card)
 
-        self._layout.addWidget(adv_group)
+        self._layout.addWidget(self._adv_group)
 
         # ── Software update group ─────────────────────────────────────────
-        updates_group = SettingCardGroup("Software update", self)
+        self._updates_group = SettingCardGroup(self.tr("Software update"), self)
 
-        auto_update_card = SettingCard(
+        self._auto_update_card = SettingCard(
             FluentIcon.SYNC,
-            "Check for updates when the application starts",
-            "The new version will be more stable and have more features",
+            self.tr("Check for updates when the application starts"),
+            self.tr(
+                "The new version will be more stable and have more features"
+            ),
         )
         self._auto_update_switch = SwitchButton()
         self._auto_update_switch.setChecked(True)
-        auto_update_card.hBoxLayout.addWidget(self._auto_update_switch)
-        auto_update_card.hBoxLayout.addSpacing(16)
-        updates_group.addSettingCard(auto_update_card)
+        self._auto_update_card.hBoxLayout.addWidget(self._auto_update_switch)
+        self._auto_update_card.hBoxLayout.addSpacing(16)
+        self._updates_group.addSettingCard(self._auto_update_card)
 
-        self._layout.addWidget(updates_group)
+        self._layout.addWidget(self._updates_group)
 
         # ── About group ───────────────────────────────────────────────────
-        about_group = SettingCardGroup("About", self)
+        self._about_group = SettingCardGroup(self.tr("About"), self)
 
-        help_card = SettingCard(
+        self._help_card = SettingCard(
             FluentIcon.HELP,
-            "Help",
-            "Report bugs, request features, or read the documentation on GitHub",
+            self.tr("Help"),
+            self.tr(
+                "Report bugs, request features, or read the"
+                " documentation on GitHub"
+            ),
         )
-        open_help_btn = PushButton("Open help page")
-        open_help_btn.clicked.connect(
+        self._open_help_btn = PushButton(self.tr("Open help page"))
+        self._open_help_btn.clicked.connect(
             lambda: webbrowser.open("https://github.com/k10978311-ai/VOK")
         )
-        help_card.hBoxLayout.addWidget(open_help_btn)
-        help_card.hBoxLayout.addSpacing(16)
-        about_group.addSettingCard(help_card)
+        self._help_card.hBoxLayout.addWidget(self._open_help_btn)
+        self._help_card.hBoxLayout.addSpacing(16)
+        self._about_group.addSettingCard(self._help_card)
 
-        feedback_card = SettingCard(
+        self._feedback_card = SettingCard(
             FluentIcon.FEEDBACK,
-            "Provide feedback",
-            "Submit a bug report or feature request via GitHub Issues",
+            self.tr("Provide feedback"),
+            self.tr(
+                "Submit a bug report or feature request via GitHub Issues"
+            ),
         )
-        feedback_btn = PushButton("Provide feedback")
-        feedback_btn.clicked.connect(
-            lambda: webbrowser.open("https://github.com/k10978311-ai/VOK/issues")
+        self._feedback_btn = PushButton(self.tr("Provide feedback"))
+        self._feedback_btn.clicked.connect(
+            lambda: webbrowser.open(
+                "https://github.com/k10978311-ai/VOK/issues"
+            )
         )
-        feedback_card.hBoxLayout.addWidget(feedback_btn)
-        feedback_card.hBoxLayout.addSpacing(16)
-        about_group.addSettingCard(feedback_card)
+        self._feedback_card.hBoxLayout.addWidget(self._feedback_btn)
+        self._feedback_card.hBoxLayout.addSpacing(16)
+        self._about_group.addSettingCard(self._feedback_card)
 
-        about_card = SettingCard(
+        self._about_card = SettingCard(
             FluentIcon.INFO,
-            "About",
-            f"\u00a9 Copyright 2025, VOK Downloader \u2013 Version {app.__version__}",
+            self.tr("About"),
+            self.tr("\u00a9 Copyright 2025, VOK Downloader \u2013 Version")
+            + f" {app.__version__}",
         )
-        self._check_update_btn = PushButton("Check update")
+        self._check_update_btn = PushButton(self.tr("Check update"))
         self._check_update_btn.setIcon(FluentIcon.SYNC)
         self._check_update_btn.clicked.connect(self._on_check_update_clicked)
-        about_card.hBoxLayout.addWidget(self._check_update_btn)
-        about_card.hBoxLayout.addSpacing(16)
-        about_group.addSettingCard(about_card)
+        self._about_card.hBoxLayout.addWidget(self._check_update_btn)
+        self._about_card.hBoxLayout.addSpacing(16)
+        self._about_group.addSettingCard(self._about_card)
 
-        self._layout.addWidget(about_group)
-
-        self._update_check_worker = None
-        self._update_download_worker = None
-
+        self._layout.addWidget(self._about_group)
         self._layout.addStretch(1)
 
-        self._load_values()
-        self._connect_auto_save()
+    # ── Language change ───────────────────────────────────────────────────
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        from PyQt5.QtCore import QEvent
+        super().changeEvent(event)
+        if event.type() == QEvent.LanguageChange:
+            self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        self.setWindowTitle(self.tr("Settings"))
+        self._title_lbl.setText(self.tr("Settings"))
+
+        # Groups
+        self._dl_group.titleLabel.setText(self.tr("Downloads"))
+        self._perf_group.titleLabel.setText(self.tr("Performance"))
+        self._appear_group.titleLabel.setText(self.tr("Appearance"))
+        self._adv_group.titleLabel.setText(self.tr("Advanced"))
+        self._updates_group.titleLabel.setText(self.tr("Software update"))
+        self._about_group.titleLabel.setText(self.tr("About"))
+
+        # Download cards
+        self._path_push_card.titleLabel.setText(self.tr("Download path"))
+        self._path_push_card.button.setText(self.tr("Choose"))
+        self._format_card.titleLabel.setText(self.tr("Default download format"))
+        self._format_card.contentLabel.setText(
+            self.tr("Video/audio quality and container used for new downloads")
+        )
+        self._single_card.titleLabel.setText(
+            self.tr("Single video only (no playlists)")
+        )
+        self._single_card.contentLabel.setText(
+            self.tr(
+                "Download only the current video; skip playlists"
+                " when a single URL is used."
+            )
+        )
+        self._mode_card.titleLabel.setText(self.tr("Download mode"))
+        self._mode_card.contentLabel.setText(
+            self.tr("Normal or enhanced download.")
+        )
+        self._sound_complete_card.titleLabel.setText(
+            self.tr("Sound alert on completed download")
+        )
+        self._sound_complete_card.contentLabel.setText(
+            self.tr("Play a sound when a download finishes successfully.")
+        )
+        self._sound_error_card.titleLabel.setText(
+            self.tr("Sound alert on download error")
+        )
+        self._sound_error_card.contentLabel.setText(
+            self.tr("Play a sound when a download fails or is skipped.")
+        )
+
+        # Performance cards
+        self._conc_card.titleLabel.setText(self.tr("Concurrent downloads"))
+        self._conc_card.contentLabel.setText(
+            self.tr("Number of parallel download jobs (1 \u2013 4)")
+        )
+        self._frag_card.titleLabel.setText(self.tr("Concurrent fragments"))
+        self._frag_card.contentLabel.setText(
+            self.tr("Fragment threads per download job (1 \u2013 16)")
+        )
+
+        # Appearance cards
+        self._theme_card.card.titleLabel.setText(self.tr("Application theme"))
+        self._theme_card.card.contentLabel.setText(
+            self.tr("Adjust the appearance of your application")
+        )
+        self._language_card.titleLabel.setText(self.tr("Language"))
+        self._language_card.contentLabel.setText(
+            self.tr(
+                "Application display language"
+                " (restart may be needed for full effect)"
+            )
+        )
+        self._color_card.titleLabel.setText(self.tr("Accent color"))
+        self._color_card.contentLabel.setText(
+            self.tr("Hex color used as the application accent (e.g. #0078D4)")
+        )
+        self._color_btn.setText(self.tr("Choose\u2026"))
+
+        # Advanced cards
+        self._cookies_card.titleLabel.setText(self.tr("Cookies file"))
+        self._cookies_card.contentLabel.setText(
+            self.tr(
+                "Netscape cookies.txt for sites that require login"
+                " (ok.ru private, Instagram, etc.)"
+            )
+        )
+        self._cookies_edit.setPlaceholderText(
+            self.tr("Path to cookies.txt (optional)")
+        )
+        self._cookies_browse_btn.setText(self.tr("Browse\u2026"))
+        self._reset_card.titleLabel.setText(self.tr("Reset settings"))
+        self._reset_card.contentLabel.setText(
+            self.tr("Restore all settings to their factory defaults")
+        )
+        self._reset_btn.setText(self.tr("Reset to defaults"))
+
+        # Updates cards
+        self._auto_update_card.titleLabel.setText(
+            self.tr("Check for updates when the application starts")
+        )
+        self._auto_update_card.contentLabel.setText(
+            self.tr(
+                "The new version will be more stable and have more features"
+            )
+        )
+
+        # About cards
+        self._help_card.titleLabel.setText(self.tr("Help"))
+        self._help_card.contentLabel.setText(
+            self.tr(
+                "Report bugs, request features, or read the"
+                " documentation on GitHub"
+            )
+        )
+        self._open_help_btn.setText(self.tr("Open help page"))
+        self._feedback_card.titleLabel.setText(self.tr("Provide feedback"))
+        self._feedback_card.contentLabel.setText(
+            self.tr(
+                "Submit a bug report or feature request via GitHub Issues"
+            )
+        )
+        self._feedback_btn.setText(self.tr("Provide feedback"))
+        self._about_card.titleLabel.setText(self.tr("About"))
+        self._about_card.contentLabel.setText(
+            self.tr("\u00a9 Copyright 2025, VOK Downloader \u2013 Version")
+            + f" {app.__version__}"
+        )
+        self._check_update_btn.setText(self.tr("Check update"))
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -389,8 +551,8 @@ class SettingsView(BaseView):
         self._apply_settings_to_ui(get_default_settings())
         self._save()
         InfoBar.success(
-            title="Reset",
-            content="Settings restored to defaults.",
+            title=self.tr("Reset"),
+            content=self.tr("Settings restored to defaults."),
             isClosable=True,
             duration=2500,
             position=InfoBarPosition.TOP_RIGHT,
@@ -436,8 +598,8 @@ class SettingsView(BaseView):
         apply_language(locale_str)
         self._save()
         InfoBar.info(
-            title="Language changed",
-            content="Some text will update on next restart.",
+            title=self.tr("Language changed"),
+            content=self.tr("Some text will update on next restart."),
             isClosable=True,
             duration=3500,
             position=InfoBarPosition.TOP_RIGHT,
@@ -447,8 +609,8 @@ class SettingsView(BaseView):
     def _on_enhance_mode_clicked(self):
         """Show 'Coming soon!' when user selects Enhance download mode."""
         InfoBar.info(
-            title="Enhance",
-            content="Coming soon!",
+            title=self.tr("Enhance"),
+            content=self.tr("Coming soon!"),
             isClosable=True,
             duration=3000,
             position=InfoBarPosition.TOP_RIGHT,
@@ -457,7 +619,7 @@ class SettingsView(BaseView):
 
     def _browse_path(self):
         start = self._path_push_card.contentLabel.text() or str(get_default_downloads_dir())
-        path = QFileDialog.getExistingDirectory(self, "Download folder", start)
+        path = QFileDialog.getExistingDirectory(self, self.tr("Download folder"), start)
         if path:
             self._path_push_card.contentLabel.setText(path)
             self._save()
@@ -465,9 +627,9 @@ class SettingsView(BaseView):
     def _browse_cookies(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select cookies file",
+            self.tr("Select cookies file"),
             "",
-            "Text files (*.txt);;All files (*)",
+            self.tr("Text files (*.txt);;All files (*)"),
         )
         if path:
             self._cookies_edit.setText(path)
@@ -485,8 +647,8 @@ class SettingsView(BaseView):
     def _on_update_check_result(self, version: str | None, download_url: str | None):
         if version is None or download_url is None:
             InfoBar.success(
-                title="No update",
-                content="You are on the latest version.",
+                title=self.tr("No update"),
+                content=self.tr("You are on the latest version."),
                 isClosable=True,
                 duration=3000,
                 position=InfoBarPosition.TOP_RIGHT,
@@ -495,8 +657,8 @@ class SettingsView(BaseView):
             return
         reply = QMessageBox.question(
             self,
-            "Update available",
-            f"New version {version} is available.\n\nUpdate now? The app will close and the new version will be installed.",
+            self.tr("Update available"),
+            self.tr("New version %1 is available.\n\nUpdate now? The app will close and the new version will be installed.").replace("%1", version),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -509,8 +671,8 @@ class SettingsView(BaseView):
         self._update_download_worker.finished.connect(lambda: self._check_update_btn.setEnabled(True))
         self._update_download_worker.start()
         InfoBar.success(
-            title="Downloading update",
-            content="The installer is downloading. The app will close when ready.",
+            title=self.tr("Downloading update"),
+            content=self.tr("The installer is downloading. The app will close when ready."),
             isClosable=True,
             duration=5000,
             position=InfoBarPosition.TOP_RIGHT,
@@ -523,8 +685,8 @@ class SettingsView(BaseView):
     def _on_update_download_failed(self):
         self._check_update_btn.setEnabled(True)
         InfoBar.error(
-            title="Update failed",
-            content="Could not download the update. Try again later.",
+            title=self.tr("Update failed"),
+            content=self.tr("Could not download the update. Try again later."),
             isClosable=True,
             duration=4000,
             position=InfoBarPosition.TOP_RIGHT,
@@ -538,7 +700,7 @@ class SettingsView(BaseView):
         initial = QColor(raw)
         if not initial.isValid():
             initial = QColor(default_hex)
-        color = QColorDialog.getColor(initial, self, "Accent color")
+        color = QColorDialog.getColor(initial, self, self.tr("Accent color"))
         if color.isValid():
             self._color_edit.setText(color.name())
             self._save()
