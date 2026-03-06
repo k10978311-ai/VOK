@@ -39,6 +39,7 @@ from qfluentwidgets import (
 )
 
 from app.common.paths import get_default_downloads_dir
+from app.common.signal_bus import signal_bus
 from app.common.sound import play_download_sound
 from app.common.state import add_log_entry
 from app.config import load_settings
@@ -546,6 +547,7 @@ class DownloaderView(QFrame):
         self._process_table.setCellWidget(row, 6, bar)
         self._job_to_row[job_id] = row
         self._job_progress[job_id] = 0.0
+        signal_bus.download_started.emit(job_id, url or message, output_dir or "")
         if scroll:
             self._process_table.scrollToBottom()
 
@@ -889,6 +891,7 @@ class DownloaderView(QFrame):
     def _on_progress(self, job_id: str, value: float) -> None:
         """Store progress and schedule a single UI update to avoid flooding."""
         self._job_progress[job_id] = max(0.0, min(1.0, value)) if value >= 0 else 0.0
+        signal_bus.download_progress.emit(job_id, self._job_progress[job_id])
         if not self._progress_flush_pending:
             self._progress_flush_pending = True
             QTimer.singleShot(PROGRESS_THROTTLE_MS, self._flush_progress_ui)
@@ -906,6 +909,11 @@ class DownloaderView(QFrame):
         self._enhance_worker = None
         self._enhance_job_id = ""
         to_delete = self._enhance_original_to_delete.pop(job_id, "")
+        signal_bus.enhance_finished.emit(
+            job_id, success,
+            os.path.basename(to_delete or output_path),
+            output_path, size_bytes
+        )
         if success and to_delete and os.path.isfile(to_delete):
             try:
                 os.remove(to_delete)
@@ -1002,6 +1010,7 @@ class DownloaderView(QFrame):
             )
             self._enhance_worker.finished_signal.connect(self._on_enhance_finished)
             self._enhance_worker.start()
+            signal_bus.enhance_started.emit(job_id, os.path.basename(filepath))
             row = self._job_to_row.get(job_id)
             if row is not None and row < self._process_table.rowCount():
                 status_item = self._process_table.item(row, 2)
@@ -1009,6 +1018,7 @@ class DownloaderView(QFrame):
                     status_item.setText("Enhancing...")
             self._update_controls()
             return
+        signal_bus.download_finished.emit(job_id, success, message, filepath, size_bytes)
         self._tooltip_done += 1
         add_log_entry("info" if success else "error", message)
         s = load_settings()
