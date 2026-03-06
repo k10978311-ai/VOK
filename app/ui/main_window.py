@@ -1,14 +1,15 @@
 from PyQt5.QtWidgets import QApplication
-from qfluentwidgets import FluentIcon, FluentWindow, NavigationItemPosition
+from qfluentwidgets import NavigationItemPosition, MSFluentWindow
+from qfluentwidgets import FluentIcon
 
 import app
 from app.common.paths import PROJECT_ROOT
 from app.config import load_settings
 
-from .views import DashboardView, DownloaderView, LogsView, SettingsView, VokStudioView
+from .views import DashboardView, DownloaderView, SettingsView
 from PyQt5.QtGui import QIcon
 
-class MainWindow(FluentWindow):
+class MainWindow(MSFluentWindow):
     """Fluent-style window with download and analytics tools."""
 
     def __init__(self, parent=None):
@@ -23,9 +24,6 @@ class MainWindow(FluentWindow):
 
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Dashboard")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
-        # self.addSubInterface(self.studio, FluentIcon.VIDEO, "VOK Studio")
-        # self.addSubInterface(self.logs, FluentIcon.FOLDER, "Logs")
-        self.navigationInterface.addSeparator()
         self.addSubInterface(
             self.settings,
             FluentIcon.SETTING,

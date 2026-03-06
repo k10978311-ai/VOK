@@ -69,8 +69,8 @@
     <context>
         <name>HomeBanner</name>
         <message>
-            <source>VOK Downloader</source>
-            <translation>VOK កម្មវិធីទាញយក</translation>
+            <source>VOK Get Downloader</source>
+            <translation>VOK Get កម្មវិធីទាញយកមាតិកា</translation>
         </message>
         <message>
             <source>View on GitHub</source>

@@ -1,4 +1,6 @@
 import os
+import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -41,9 +43,17 @@ from app.common.sound import play_download_sound
 from app.common.state import add_log_entry
 from app.config import load_settings
 from app.core.download import detect_platform
+from app.core.enhance import EnhancePostProcessWorker, ffmpeg_available
 from app.core.manager import DownloadJob, DownloadManager
 from app.core.scraper import PlaylistFetchWorker, fmt_duration, fmt_date
-from app.ui.components import CardHeader, DownloadConfigCard, DownloadPathPanel, DownloadTableCard
+from app.ui.components import (
+    CardHeader,
+    DownloadConfigCard,
+    DownloadEnhanceFeature,
+    DownloadPathPanel,
+    DownloadTableCard,
+    EnhanceOptions,
+)
 from app.ui.helpers import DOWNLOAD_FORMATS, host_icon
 from app.ui.utils import format_size, strip_ansi
 
@@ -55,6 +65,12 @@ MAX_PLAYLIST_DISPLAY = 1500
 PROGRESS_THROTTLE_MS = 120
 # Skip per-row log text updates when job count exceeds this (avoids UI flood)
 LOG_TABLE_UPDATE_MAX_JOBS = 80
+
+def _sanitize_folder_name(name: str) -> str:
+    """Replace path-unsafe chars so the name can be used as a folder name."""
+    s = re.sub(r'[<>:"/\\|?*]', "_", name)
+    return s.strip(". ") or "video"
+
 
 URL_PLACEHOLDER_SINGLE = (
     "https://  —  YouTube, TikTok, Douyin, Kuaishou, Instagram, Facebook, Pinterest, Twitter/X …"
@@ -109,6 +125,10 @@ class DownloaderView(QFrame):
         self._state_tooltip: StateToolTip | None = None
         self._tooltip_total: int = 0
         self._tooltip_done: int = 0
+        self._enhance_job_options: dict[str, EnhanceOptions] = {}  # job_id -> options for post-process
+        self._enhance_worker: EnhancePostProcessWorker | None = None
+        self._enhance_job_id: str = ""  # job_id of the row we're enhancing (for row update on done)
+        self._enhance_original_to_delete: dict[str, str] = {}  # job_id -> path to delete when not keep_original
 
         self._build_mode_bar()
         self._build_url_card()
@@ -175,14 +195,8 @@ class DownloaderView(QFrame):
         self._layout.addWidget(self._bulk_card)
 
     def _build_enhance_card(self):
-        """Placeholder card for Enhance mode: Coming soon."""
-        self._enhance_card = CardWidget(self)
-        lay = QVBoxLayout(self._enhance_card)
-        lay.setSpacing(10)
-        lay.addWidget(CardHeader(FluentIcon.SYNC, "Enhance", self._enhance_card))
-        coming = BodyLabel("Coming soon!", self._enhance_card)
-        coming.setStyleSheet("font-size: 16px; padding: 24px 0;")
-        lay.addWidget(coming, 0, Qt.AlignCenter)
+        """Enhance mode: download with stream edit (logo, flip, color, speed)."""
+        self._enhance_card = DownloadEnhanceFeature(self)
         self._layout.addWidget(self._enhance_card)
 
     def _build_selective_card(self):
@@ -302,7 +316,7 @@ class DownloaderView(QFrame):
     def _on_download_mode_changed(self):
         key = self._mode_segmented.currentRouteKey()
         is_enhance = key == "enhance"
-        # Hide URL card in Bulk (paste URLs in bulk list) and in Enhance (coming soon)
+        # Hide URL card in Bulk (paste URLs in bulk list) and in Enhance (URL is inside enhance card)
         self._url_card.setVisible(not is_enhance and key != "bulk")
         self._bulk_card.setVisible(key == "bulk")
         self._selective_card.setVisible(key == "selective")
@@ -714,10 +728,8 @@ class DownloaderView(QFrame):
         count = len(self._active_jobs)
         self._stop_btn.setEnabled(count > 0)
         self._jobs_label.setText(f"{count} active" if count else "")
-        # Disable Download while extracting or while any download jobs are active
-        self._start_btn.setEnabled(
-            count == 0 and not self._is_extracting() and self._mode_segmented.currentRouteKey() != "enhance"
-        )
+        # Disable Download while extracting or while any download jobs are active (enhance mode allowed)
+        self._start_btn.setEnabled(count == 0 and not self._is_extracting())
 
     # ── Download control ──────────────────────────────────────────────────
 
@@ -737,7 +749,40 @@ class DownloaderView(QFrame):
         out = self._output_dir()
         cookies = s.get("cookies_file", "")
 
-        if self._mode_segmented.currentRouteKey() == "bulk":
+        if self._mode_segmented.currentRouteKey() == "enhance":
+            url = self._enhance_card.url()
+            if not url:
+                self._log_append("Enter a URL in the Enhance card first.")
+                return
+            opts = self._enhance_card.get_options()
+            if not opts.has_edits():
+                self._log_append("Enable at least one edit (logo, flip, color, or speed) for Enhance mode.")
+                return
+            if not ffmpeg_available():
+                InfoBar.warning(
+                    title="Enhance",
+                    content="ffmpeg is not installed. Install ffmpeg to use stream edit.",
+                    isClosable=True,
+                    duration=5000,
+                    position=InfoBarPosition.TOP_RIGHT,
+                    parent=self,
+                )
+                return
+            job = DownloadJob(
+                url=url,
+                output_dir=out,
+                format_key=fmt,
+                single_video=True,
+                cookies_file=cookies,
+            )
+            self._enhance_job_options[job.job_id] = opts
+            self._active_jobs.add(job.job_id)
+            self._add_download_row(job.job_id, url, out, url=job.url)
+            self._manager.enqueue(job)
+            self._tooltip_total = 1
+            self._tooltip_done = 0
+            self._show_state_tooltip("Enhance download", "Downloading, then applying edits…")
+        elif self._mode_segmented.currentRouteKey() == "bulk":
             # Bulk mode: dedupe, cap size, batch-add rows then enqueue
             text = self._bulk_edit.toPlainText()
             raw = [ln.strip() for ln in text.splitlines() if ln.strip()]
@@ -799,6 +844,16 @@ class DownloaderView(QFrame):
             self._progress.setVisible(False)
         if self._progress_pct_label is not None:
             self._progress_pct_label.setVisible(False)
+
+        if s.get("auto_reset_link_before_download", True):
+            mode = self._mode_segmented.currentRouteKey()
+            if mode == "bulk":
+                self._bulk_edit.clear()
+            elif mode == "enhance":
+                self._enhance_card.set_url("")
+            else:
+                self._url_edit.clear()
+
         self._update_controls()
 
     def _update_header_progress(self) -> None:
@@ -843,11 +898,104 @@ class DownloaderView(QFrame):
         self._update_state_tooltip("Cancelled.")
         self._close_state_tooltip()
 
+    def _on_enhance_finished(
+        self, success: bool, message: str, output_path: str, size_bytes: int
+    ) -> None:
+        job_id = self._enhance_job_id
+        self._enhance_worker = None
+        self._enhance_job_id = ""
+        to_delete = self._enhance_original_to_delete.pop(job_id, "")
+        if success and to_delete and os.path.isfile(to_delete):
+            try:
+                os.remove(to_delete)
+                add_log_entry("info", "Original file removed (Keep original was off).")
+            except OSError:
+                add_log_entry("warning", "Could not remove original file.")
+        self._tooltip_done += 1
+        add_log_entry("info" if success else "error", message)
+        s = load_settings()
+        if success and s.get("sound_alert_on_complete", True):
+            play_download_sound(success=True)
+        elif not success and s.get("sound_alert_on_error", True):
+            play_download_sound(success=False)
+        if not success:
+            InfoBar.error(
+                title="Enhance failed",
+                content=message[:200] + ("…" if len(message) > 200 else ""),
+                isClosable=True,
+                duration=6000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
+        row = self._job_to_row.get(job_id)
+        if row is not None and row < self._process_table.rowCount():
+            status_item = self._process_table.item(row, 2)
+            if status_item:
+                status_item.setText("Done" if success else "Skipped")
+            msg_item = self._process_table.item(row, 3)
+            if msg_item:
+                msg_item.setText(message[:500] if len(message) > 500 else message)
+            path_item = self._process_table.item(row, 4)
+            if path_item and output_path:
+                path_item.setText(output_path)
+            size_item = self._process_table.item(row, 5)
+            if size_item:
+                size_item.setText(format_size(size_bytes) if size_bytes >= 0 else "—")
+            bar = self._process_table.cellWidget(row, self._progress_col())
+            if isinstance(bar, ProgressBar):
+                bar.setVisible(False)
+        if not self._active_jobs:
+            self._update_state_tooltip(
+                f"{self._tooltip_done} / {self._tooltip_total} complete"
+            )
+            self._close_state_tooltip()
+            self._tooltip_total = 0
+            self._tooltip_done = 0
+        else:
+            self._update_state_tooltip(
+                f"{self._tooltip_done} / {self._tooltip_total} complete"
+            )
+        self._update_controls()
+
     def _on_job_finished(
         self, job_id: str, success: bool, message: str, filepath: str, size_bytes: int
     ) -> None:
         self._active_jobs.discard(job_id)
         self._job_progress.pop(job_id, None)
+        opts = self._enhance_job_options.pop(job_id, None)
+        if opts and success and filepath and opts.has_edits() and ffmpeg_available():
+            base, ext = os.path.splitext(filepath)
+            ext = ext or ".mp4"
+            if opts.keep_original:
+                dirname = os.path.dirname(filepath)
+                base_name = os.path.basename(filepath)
+                name_no_ext = os.path.splitext(base_name)[0]
+                folder = os.path.join(dirname, _sanitize_folder_name(name_no_ext))
+                os.makedirs(folder, exist_ok=True)
+                new_input = os.path.join(folder, base_name)
+                shutil.move(filepath, new_input)
+                filepath = new_input
+                out_path = os.path.join(folder, f"{name_no_ext}_enhanced{ext}")
+                self._enhance_original_to_delete[job_id] = ""
+            else:
+                out_path = f"{base}_enhanced{ext}"
+                self._enhance_original_to_delete[job_id] = filepath
+            self._enhance_job_id = job_id
+            self._enhance_worker = EnhancePostProcessWorker(
+                filepath, out_path, opts, job_id=job_id, parent=self
+            )
+            self._enhance_worker.log_line.connect(
+                lambda t, jid=job_id: self._on_job_log(jid, t)
+            )
+            self._enhance_worker.finished_signal.connect(self._on_enhance_finished)
+            self._enhance_worker.start()
+            row = self._job_to_row.get(job_id)
+            if row is not None and row < self._process_table.rowCount():
+                status_item = self._process_table.item(row, 2)
+                if status_item:
+                    status_item.setText("Enhancing...")
+            self._update_controls()
+            return
         self._tooltip_done += 1
         add_log_entry("info" if success else "error", message)
         s = load_settings()

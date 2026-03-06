@@ -181,6 +181,19 @@ class SettingsView(BaseView):
         self._sound_error_card.hBoxLayout.addSpacing(16)
         self._dl_group.addSettingCard(self._sound_error_card)
 
+        self._auto_reset_card = SettingCard(
+            FluentIcon.SYNC,
+            self.tr("Auto-clear URL before download"),
+            self.tr(
+                "Automatically clear the URL input field after a download starts."
+            ),
+        )
+        self._auto_reset_switch = SwitchButton()
+        self._auto_reset_switch.setChecked(True)
+        self._auto_reset_card.hBoxLayout.addWidget(self._auto_reset_switch)
+        self._auto_reset_card.hBoxLayout.addSpacing(16)
+        self._dl_group.addSettingCard(self._auto_reset_card)
+
         self._layout.addWidget(self._dl_group)
 
         # ── Performance group ─────────────────────────────────────────────
@@ -426,6 +439,14 @@ class SettingsView(BaseView):
         self._sound_error_card.contentLabel.setText(
             self.tr("Play a sound when a download fails or is skipped.")
         )
+        self._auto_reset_card.titleLabel.setText(
+            self.tr("Auto-clear URL before download")
+        )
+        self._auto_reset_card.contentLabel.setText(
+            self.tr(
+                "Automatically clear the URL input field after a download starts."
+            )
+        )
 
         # Performance cards
         self._conc_card.titleLabel.setText(self.tr("Concurrent downloads"))
@@ -520,6 +541,7 @@ class SettingsView(BaseView):
         self._cookies_edit.setText(s.get("cookies_file", ""))
         self._sound_complete_switch.setChecked(s.get("sound_alert_on_complete", True))
         self._sound_error_switch.setChecked(s.get("sound_alert_on_error", True))
+        self._auto_reset_switch.setChecked(s.get("auto_reset_link_before_download", True))
         self._auto_update_switch.setChecked(s.get("auto_update_on_start", True))
         lang = s.get("language", "Auto (System)")
         lang_labels = list(LANGUAGES.keys())
@@ -541,6 +563,7 @@ class SettingsView(BaseView):
         self._frag_combo.currentTextChanged.connect(self._save)
         self._sound_complete_switch.checkedChanged.connect(self._save)
         self._sound_error_switch.checkedChanged.connect(self._save)
+        self._auto_reset_switch.checkedChanged.connect(self._save)
         self._auto_update_switch.checkedChanged.connect(self._save)
         self._color_edit.editingFinished.connect(self._save)
         self._cookies_edit.editingFinished.connect(self._save)
@@ -574,6 +597,7 @@ class SettingsView(BaseView):
         s["cookies_file"] = self._cookies_edit.text().strip()
         s["sound_alert_on_complete"] = self._sound_complete_switch.isChecked()
         s["sound_alert_on_error"] = self._sound_error_switch.isChecked()
+        s["auto_reset_link_before_download"] = self._auto_reset_switch.isChecked()
         s["auto_update_on_start"] = self._auto_update_switch.isChecked()
         s["language"] = self._language_combo.currentText()
         save_settings(s)

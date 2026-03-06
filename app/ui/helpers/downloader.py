@@ -18,10 +18,9 @@ DOWNLOAD_FORMATS = [
     "Photo / Image",
 ]
 
-# Platform display name -> icon filename in resources/icons (README.md)
 PLATFORM_ICON_NAMES = {
     "YouTube": "youtube.png",
-    "tiktok": "tiktok.png",
+    "TikTok": "tiktok.png",
     "Douyin": "douyin.png",
     "Kuaishou": "kuaishou.png",
     "Instagram": "instagram.png",

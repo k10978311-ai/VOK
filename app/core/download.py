@@ -131,6 +131,7 @@ def _strip_ansi(text: str) -> str:
 _DOMAIN_LABELS: dict[str, str] = {
     "youtu.be": "YouTube",
     "youtube.com": "YouTube",
+    "tiktok.com": "TikTok",
     "kwai.com": "Kuaishou",
     "kuaishou.com": "Kuaishou",
     "pin.it": "Pinterest",

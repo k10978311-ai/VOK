@@ -6,6 +6,7 @@ from .card_header import CardHeader
 from .dashboard_feature_card import DashboardFeatureCard
 from .dashboard_feature_grid import DashboardFeatureGrid
 from .dashboard_instructions_card import DashboardInstructionsCard
+from .download_enhance_feature import DownloadEnhanceFeature, EnhanceOptions
 from .download_path_panel import DownloadPathPanel
 from .download_table_card import DownloadTableCard
 from .DownloadPowerSettingCard import DownloadConfigCard
@@ -17,7 +18,9 @@ __all__ = [
     "DashboardFeatureGrid",
     "DashboardInstructionsCard",
     "DownloadConfigCard",
+    "DownloadEnhanceFeature",
     "DownloadPathPanel",
     "DownloadTableCard",
+    "EnhanceOptions",
     "StatusTable",
 ]
