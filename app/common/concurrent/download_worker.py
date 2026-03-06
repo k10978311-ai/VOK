@@ -22,6 +22,35 @@ _ffmpeg_hint_shown: bool = False
 _impersonate_hint_shown: bool = False
 
 
+def _fmt_bytes(n: float) -> str:
+    """Format a byte count as a short human-readable string (e.g. '12.3MB')."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{int(n)}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+    return f"{n:.1f}PB"
+
+
+def _fmt_speed(bps: float | None) -> str:
+    """Format bytes-per-second as a speed string (e.g. '3.2MB/s')."""
+    if not bps or bps < 0:
+        return "0MB/s"
+    for unit in ("B/s", "KB/s", "MB/s", "GB/s"):
+        if bps < 1024:
+            return f"{int(bps)}{unit}" if unit == "B/s" else f"{bps:.1f}{unit}"
+        bps /= 1024
+    return f"{bps:.1f}TB/s"
+
+
+def _fmt_eta(secs: int | None) -> str:
+    """Format seconds remaining as HH:MM:SS."""
+    if secs is None or secs < 0:
+        return "--:--"
+    h, rem = divmod(int(secs), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
 def _unique_path(path: str) -> str:
     """Return *path* unchanged if it doesn't exist, otherwise append (2), (3) … until unique."""
     if not os.path.exists(path):
@@ -50,6 +79,8 @@ class DownloadWorker(QThread):
 
     log_line = pyqtSignal(str)
     progress = pyqtSignal(float)
+    # (pct 0–1, speed_str, eta_str, current_size_str, total_size_str)
+    progress_detail = pyqtSignal(float, str, str, str, str)
     finished_signal = pyqtSignal(bool, str, str, int)  # success, message, filepath, size_bytes (-1 if unknown)
 
     def __init__(
@@ -136,9 +167,15 @@ class DownloadWorker(QThread):
             status = d.get("status")
             if status == "downloading":
                 total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-                done = d.get("downloaded_bytes", 0)
+                done = d.get("downloaded_bytes", 0) or 0
+                pct = (done / total) if total else 0.0
                 if total:
-                    self.progress.emit(done / total)
+                    self.progress.emit(pct)
+                speed_str = _fmt_speed(d.get("speed"))
+                eta_str   = _fmt_eta(d.get("eta"))
+                cur_str   = _fmt_bytes(done) if done else "0B"
+                tot_str   = _fmt_bytes(total) if total else "?"
+                self.progress_detail.emit(pct, speed_str, eta_str, cur_str, tot_str)
             elif status == "finished":
                 self.progress.emit(1.0)
                 filename = d.get("filename", "")
