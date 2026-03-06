@@ -33,26 +33,34 @@ def _ar_filter_steps(opts: "EnhanceOptions", in_node: str, out_node: str) -> lis
         return []
 
     tw, th = _RATIOS[ar]
-    # Output dimensions: smallest rectangle with target AR that contains source
-    # Using ffmpeg expressions (evaluated at filter run-time with original iw/ih)
     ow = f"max(iw\\,ceil(ih*{tw}/{th}/2)*2)"
     oh = f"max(ih\\,ceil(iw*{th}/{tw}/2)*2)"
 
     bg_type = getattr(opts, "bg_type", "blur")
-    hex_color = getattr(opts, "bg_color", "#000000").lstrip("#") or "000000"
+    
+    # Extract and validate hex color more robustly
+    raw_color = getattr(opts, "bg_color", "#000000") or "#000000"
+    # Filter to only valid hex characters
+    hex_color = "".join(c for c in raw_color if c in "0123456789ABCDEFabcdef")
+    # Validate and normalize
+    if not hex_color or len(hex_color) not in (3, 6):
+        hex_color = "000000"  # fallback to black
+    elif len(hex_color) == 3:
+        hex_color = "".join(c * 2 for c in hex_color)
 
     if bg_type == "stretch":
-        return [f"{in_node}scale={ow}:{oh}[{out_node}]"]
+        return [f"{in_node}scale={ow}:{oh}:force_original_aspect_ratio=disable[{out_node}]"]
 
     if bg_type == "color":
         return [
             f"{in_node}pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:color=0x{hex_color}[{out_node}]"
         ]
 
-    # blur (default): scale stretched + boxblur as background, overlay original centred
+    # blur (default): scale stretched + gblur as background, overlay original centred
+    # Using gblur (Gaussian blur) with higher sigma for more visible blur effect
     return [
         f"{in_node}split=2[_ar_fg][_ar_bg]",
-        f"[_ar_bg]scale={ow}:{oh},boxblur=15:5[_ar_bgblur]",
+        f"[_ar_bg]scale={ow}:{oh}:force_original_aspect_ratio=disable,gblur=sigma=25[_ar_bgblur]",
         f"[_ar_bgblur][_ar_fg]overlay=(W-w)/2:(H-h)/2[{out_node}]",
     ]
 
