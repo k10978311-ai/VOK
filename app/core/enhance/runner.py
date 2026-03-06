@@ -62,7 +62,10 @@ def run_enhance(
     ])
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=600,
+        )
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "")[-800:]
             return False, f"ffmpeg failed: {err}", -1

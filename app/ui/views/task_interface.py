@@ -37,10 +37,10 @@ class _TaskCardBase(CardWidget):
     """Common layout for a single task row: icon | name+sub | status badge | open-folder btn."""
 
     _STATUS_COLORS = {
-        "Downloading": ("rgba(33,150,243,0.18)",  "#2196F3"),
-        "Enhancing":   ("rgba(255,190,0,0.18)",   "#FFB800"),
-        "Finished":    ("rgba(0,200,120,0.18)",   "#00B86B"),
-        "Failed":      ("rgba(255,80,80,0.18)",    "#FF5050"),
+        "Downloading": ("rgba(33,150,243,0.14)",  "#64B5F6"),
+        "Enhancing":   ("rgba(255,190,0,0.14)",   "#FFD54F"),
+        "Finished":    ("rgba(0,200,120,0.14)",   "#4DB6AC"),
+        "Failed":      ("rgba(255,80,80,0.14)",   "#EF9A9A"),
     }
 
     def __init__(
@@ -76,9 +76,10 @@ class _TaskCardBase(CardWidget):
         self._text_col.addWidget(self._sub_label)
 
         self._status_label = QLabel(status)
-        self._status_label.setFixedWidth(94)
         self._status_label.setAlignment(Qt.AlignCenter)
+        self._status_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self._status_label.setStyleSheet(self._status_style(status))
+        self._status_label.adjustSize()
 
         self._open_btn = ToolButton(FluentIcon.FOLDER)
         self._open_btn.setToolTip("Open folder")
@@ -119,15 +120,17 @@ class _TaskCardBase(CardWidget):
 
     @classmethod
     def _status_style(cls, status: str) -> str:
-        bg, fg = cls._STATUS_COLORS.get(status, ("rgba(150,150,150,0.18)", "#888"))
+        bg, fg = cls._STATUS_COLORS.get(status, ("rgba(150,150,150,0.12)", "#999"))
         return (
-            f"QLabel {{ background: {bg}; color: {fg}; border-radius: 10px; "
-            f"font-size: 11px; font-weight: 600; padding: 2px 8px; }}"
+            f"QLabel {{ background: {bg}; color: {fg}; border-radius: 8px; "
+            f"font-size: 10px; font-weight: 700; letter-spacing: 0.3px;"
+            f" padding: 3px 10px; }}"
         )
 
     def set_status(self, status: str) -> None:
         self._status_label.setText(status)
         self._status_label.setStyleSheet(self._status_style(status))
+        self._status_label.adjustSize()
 
 
 # ── Download card ──────────────────────────────────────────────────────────────

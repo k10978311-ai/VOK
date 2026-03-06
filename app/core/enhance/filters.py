@@ -51,11 +51,19 @@ def _ar_filter_steps(opts: "EnhanceOptions", in_node: str, out_node: str) -> lis
             f"{in_node}pad={ow}:{oh}:(ow-iw)/2:(oh-ih)/2:color=0x{hex_color}[{out_node}]"
         ]
 
-    # blur (default): Gaussian blur background + centred overlay
+    # blur (default):
+    # Background → cover-scale (preserve AR, fill canvas), center-crop to exact size, heavy blur.
+    #   After force_original_aspect_ratio=increase one dimension equals the target exactly and
+    #   the other is ≥ target.  min(iw, ceil(ih*tw/th/2)*2) / min(ih, ceil(iw*th/tw/2)*2)
+    #   evaluated on the *scaled* iw/ih always resolves to the exact canvas dimensions.
+    # Foreground → contain-scale (preserve AR, fit inside canvas), centred on blurred bg.
+    crop_w = f"min(iw\\,ceil(ih*{tw}/{th}/2)*2)"
+    crop_h = f"min(ih\\,ceil(iw*{th}/{tw}/2)*2)"
     return [
-        f"{in_node}split=2[_ar_fg][_ar_bg]",
-        f"[_ar_bg]scale={ow}:{oh}:force_original_aspect_ratio=disable,gblur=sigma=25[_ar_bgblur]",
-        f"[_ar_bgblur][_ar_fg]overlay=(W-w)/2:(H-h)/2[{out_node}]",
+        f"{in_node}split=2[_ar_bg_src][_ar_fg_src]",
+        f"[_ar_bg_src]scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={crop_w}:{crop_h},gblur=sigma=40[_ar_bg]",
+        f"[_ar_fg_src]scale={ow}:{oh}:force_original_aspect_ratio=decrease,setsar=1[_ar_fg]",
+        f"[_ar_bg][_ar_fg]overlay=(W-w)/2:(H-h)/2[{out_node}]",
     ]
 
 
@@ -86,19 +94,27 @@ def _build_video_filters(opts: "EnhanceOptions", has_logo: bool) -> str:
     post_filter = ",".join(post_parts)
 
     if not has_logo:
-        ar_steps = _ar_filter_steps(opts, "[0:v]", "v_ar")
+        cur = "[0:v]"
+        steps: list[str] = []
+        if flip_filter:
+            steps.append(f"[0:v]{flip_filter}[vflip]")
+            cur = "[vflip]"
+        ar_steps = _ar_filter_steps(opts, cur, "v_ar")
         if ar_steps:
-            steps: list[str] = []
-            cur = "[0:v]"
-            if flip_filter:
-                steps.append(f"[0:v]{flip_filter}[vflip]")
-                cur = "[vflip]"
-            steps.extend(_ar_filter_steps(opts, cur, "v_ar"))
+            steps.extend(ar_steps)
             cur = "[v_ar]"
             if post_filter:
                 steps.append(f"{cur}{post_filter}[vout]")
+                return ";".join(steps)
+            # no post-filter: rename label inline via null
+            steps[-1] = steps[-1].replace("[v_ar]", "[vout]")
+            return ";".join(steps)
+        # no AR change
+        if steps:  # flip was applied
+            if post_filter:
+                steps.append(f"{cur}{post_filter}[vout]")
             else:
-                steps.append(f"{cur}copy[vout]")
+                steps[-1] = steps[-1].replace("[vflip]", "[vout]")
             return ";".join(steps)
         all_parts = flip_parts + post_parts
         vf = ",".join(all_parts) if all_parts else "copy"
@@ -137,6 +153,7 @@ def _build_video_filters(opts: "EnhanceOptions", has_logo: bool) -> str:
     if post_filter:
         steps.append(f"[v1]{post_filter}[vout]")
     else:
-        steps.append("[v1]copy[vout]")
+        # rename v1 → vout directly in the last overlay step
+        steps[-1] = steps[-1].replace("[v1]", "[vout]")
 
     return ";".join(steps)
