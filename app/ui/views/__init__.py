@@ -1,6 +1,6 @@
 __version__ = "0.1.0"
 
-from .bach_enhance_interface import BatchEnhanceInterface
+from .batch_enhance_interface import BatchEnhanceInterface
 from .cliper_interface import CliperInterface
 from .dashboard import DashboardView
 from .downloader import DownloaderView
