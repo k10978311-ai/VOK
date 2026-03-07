@@ -72,6 +72,11 @@ _DEFAULTS = {
     "enhance_bg_type": "blur",
     "enhance_bg_color": "#000000",
     "enhance_task_store_history": True,
+    
+    # Exit application behavior settings
+    "exit_confirmation": True,
+    "close_to_system_tray": True,
+    "exit_timeout_seconds": 3,
 }
 
 

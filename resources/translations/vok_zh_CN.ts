@@ -383,5 +383,21 @@ Update now? The app will close and the new version will be installed.</source>
             <source>Could not download the update. Try again later.</source>
             <translation>无法下载更新，请稍后重试。</translation>
         </message>
+        <message>
+            <source>Exit Application</source>
+            <translation>退出应用程序</translation>
+        </message>
+        <message>
+            <source>Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.</source>
+            <translation></translation>
+        </message>
+        <message>
+            <source>Exit</source>
+            <translation>退出</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>取消</translation>
+        </message>
     </context>
 </TS>

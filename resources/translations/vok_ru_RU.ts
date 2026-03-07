@@ -383,5 +383,25 @@ Update now? The app will close and the new version will be installed.</source>
             <source>Could not download the update. Try again later.</source>
             <translation>Не удалось загрузить обновление. Попробуйте позже.</translation>
         </message>
+        <message>
+            <source>Exit Application</source>
+            <translation>Выйти из приложения</translation>
+        </message>
+        <message>
+            <source>Are you sure you want to exit VOK completely?
+
+This will close all downloads and background processes.</source>
+            <translation>Вы уверены, что хотите полностью выйти из VOK?
+
+Это закроет все загрузки и фоновые процессы.</translation>
+        </message>
+        <message>
+            <source>Exit</source>
+            <translation>Выйти</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>Отмена</translation>
+        </message>
     </context>
 </TS>

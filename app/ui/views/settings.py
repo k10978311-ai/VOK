@@ -317,6 +317,42 @@ class SettingsView(BaseView):
         self._cookies_card.hBoxLayout.addSpacing(16)
         self._adv_group.addSettingCard(self._cookies_card)
 
+        # ── Exit behavior cards ───────────────────────────────────────────
+        self._exit_confirm_card = SettingCard(
+            FluentIcon.POWER_BUTTON,
+            self.tr("Confirm before exit"),
+            self.tr("Show confirmation dialog when exiting the application"),
+        )
+        self._exit_confirm_switch = SwitchButton()
+        self._exit_confirm_switch.setChecked(True)
+        self._exit_confirm_card.hBoxLayout.addWidget(self._exit_confirm_switch)
+        self._exit_confirm_card.hBoxLayout.addSpacing(16)
+        self._adv_group.addSettingCard(self._exit_confirm_card)
+
+        self._close_to_tray_card = SettingCard(
+            FluentIcon.HIDE,
+            self.tr("Close to system tray"),
+            self.tr("Hide to system tray instead of closing when X button is clicked"),
+        )
+        self._close_to_tray_switch = SwitchButton() 
+        self._close_to_tray_switch.setChecked(True)
+        self._close_to_tray_card.hBoxLayout.addWidget(self._close_to_tray_switch)
+        self._close_to_tray_card.hBoxLayout.addSpacing(16)
+        self._adv_group.addSettingCard(self._close_to_tray_card)
+
+        self._exit_timeout_card = SettingCard(
+            FluentIcon.SPEED_OFF,
+            self.tr("Exit timeout"),
+            self.tr("Maximum wait time for graceful shutdown (seconds)"),
+        )
+        self._exit_timeout_combo = ComboBox()
+        self._exit_timeout_combo.addItems(["2", "3", "5", "10", "15"])
+        self._exit_timeout_combo.setCurrentText("3")
+        self._exit_timeout_combo.setFixedWidth(80)
+        self._exit_timeout_card.hBoxLayout.addWidget(self._exit_timeout_combo)
+        self._exit_timeout_card.hBoxLayout.addSpacing(16)
+        self._adv_group.addSettingCard(self._exit_timeout_card)
+
         self._reset_card = SettingCard(
             FluentIcon.SYNC,
             self.tr("Reset settings"),
@@ -511,6 +547,21 @@ class SettingsView(BaseView):
             self.tr("Path to cookies.txt (optional)")
         )
         self._cookies_browse_btn.setText(self.tr("Browse\u2026"))
+        
+        # Exit configuration cards
+        self._exit_confirm_card.titleLabel.setText(self.tr("Confirm before exit"))
+        self._exit_confirm_card.contentLabel.setText(
+            self.tr("Show confirmation dialog when exiting the application")
+        )
+        self._close_to_tray_card.titleLabel.setText(self.tr("Close to system tray"))
+        self._close_to_tray_card.contentLabel.setText(
+            self.tr("Hide to system tray instead of closing when X button is clicked")
+        )
+        self._exit_timeout_card.titleLabel.setText(self.tr("Exit timeout"))
+        self._exit_timeout_card.contentLabel.setText(
+            self.tr("Maximum wait time for graceful shutdown (seconds)")
+        )
+        
         self._reset_card.titleLabel.setText(self.tr("Reset settings"))
         self._reset_card.contentLabel.setText(
             self.tr("Restore all settings to their factory defaults")
@@ -567,6 +618,12 @@ class SettingsView(BaseView):
         self._auto_reset_switch.setChecked(s.get("auto_reset_link_before_download", True))
         self._enhance_history_switch.setChecked(s.get("enhance_task_store_history", True))
         self._auto_update_switch.setChecked(s.get("auto_update_on_start", True))
+        
+        # Exit configuration settings
+        self._exit_confirm_switch.setChecked(s.get("exit_confirmation", True))
+        self._close_to_tray_switch.setChecked(s.get("close_to_system_tray", True)) 
+        self._exit_timeout_combo.setCurrentText(str(s.get("exit_timeout_seconds", 3)))
+        
         lang = s.get("language", "Auto (System)")
         lang_labels = list(LANGUAGES.keys())
         self._language_combo.setCurrentText(lang if lang in lang_labels else lang_labels[0])
@@ -590,6 +647,12 @@ class SettingsView(BaseView):
         self._auto_reset_switch.checkedChanged.connect(self._save)
         self._enhance_history_switch.checkedChanged.connect(self._save)
         self._auto_update_switch.checkedChanged.connect(self._save)
+        
+        # Exit configuration settings
+        self._exit_confirm_switch.checkedChanged.connect(self._save)
+        self._close_to_tray_switch.checkedChanged.connect(self._save)
+        self._exit_timeout_combo.currentTextChanged.connect(self._save)
+        
         self._color_edit.editingFinished.connect(self._save)
         self._cookies_edit.editingFinished.connect(self._save)
         self._language_combo.currentTextChanged.connect(self._on_language_changed)
@@ -625,6 +688,12 @@ class SettingsView(BaseView):
         s["auto_reset_link_before_download"] = self._auto_reset_switch.isChecked()
         s["enhance_task_store_history"] = self._enhance_history_switch.isChecked()
         s["auto_update_on_start"] = self._auto_update_switch.isChecked()
+        
+        # Exit configuration settings
+        s["exit_confirmation"] = self._exit_confirm_switch.isChecked()
+        s["close_to_system_tray"] = self._close_to_tray_switch.isChecked()
+        s["exit_timeout_seconds"] = int(self._exit_timeout_combo.currentText())
+        
         s["language"] = self._language_combo.currentText()
         save_settings(s)
 

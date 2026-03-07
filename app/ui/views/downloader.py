@@ -114,6 +114,7 @@ class DownloaderView(QFrame):
         self._manager = DownloadManager(parent=self)
         self._manager.log_line.connect(self._on_job_log)
         self._manager.progress.connect(self._on_progress)
+        self._manager.job_progress_detail.connect(self._on_progress_detail)
         self._manager.job_finished.connect(self._on_job_finished)
         self._active_jobs: set[str] = set()
         self._job_to_row: dict[str, int] = {}
@@ -895,6 +896,12 @@ class DownloaderView(QFrame):
         if not self._progress_flush_pending:
             self._progress_flush_pending = True
             QTimer.singleShot(PROGRESS_THROTTLE_MS, self._flush_progress_ui)
+
+    def _on_progress_detail(
+        self, job_id: str, pct: float, speed: str, eta: str, cur: str, tot: str
+    ) -> None:
+        """Forward rich progress detail to the global signal bus (drives task cards)."""
+        signal_bus.download_progress_detail.emit(job_id, pct, speed, eta, cur, tot)
 
     def _stop_all(self):
         self._manager.cancel_all()

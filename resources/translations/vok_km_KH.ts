@@ -70,7 +70,7 @@
         <name>HomeBanner</name>
         <message>
             <source>VOK Get Downloader</source>
-            <translation>VOK Get កម្មវិធីទាញយកមាតិកា</translation>
+            <translation></translation>
         </message>
         <message>
             <source>View on GitHub</source>
@@ -382,6 +382,26 @@ Update now? The app will close and the new version will be installed.</source>
         <message>
             <source>Could not download the update. Try again later.</source>
             <translation>មិនអាចទាញយកបច្ចុប្បន្នភាពបានទេ។ ព្យាយាមម្ដងទៀតនៅពេលក្រោយ។</translation>
+        </message>
+        <message>
+            <source>Exit Application</source>
+            <translation>ចុះចេញពីកម្មវិធី</translation>
+        </message>
+        <message>
+            <source>Are you sure you want to exit VOK completely?
+
+This will close all downloads and background processes.</source>
+            <translation>តើអ្នកប្រាកដថាចង់ចេញពី VOK ទាំងស្រុងឬទេ?
+
+នេះនឹងបិទការទាញយកទាំងអស់ និងដំណើរការផ្ទៃខាងក្រោយ។</translation>
+        </message>
+        <message>
+            <source>Exit</source>
+            <translation>ចេញ</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>បោះបង់</translation>
         </message>
     </context>
 </TS>

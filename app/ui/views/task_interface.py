@@ -248,6 +248,7 @@ class TaskInterface(Interface):
     def _connect_signals(self) -> None:
         signal_bus.download_started.connect(self._on_download_started)
         signal_bus.download_progress.connect(self._on_download_progress)
+        signal_bus.download_progress_detail.connect(self._on_download_progress_detail)
         signal_bus.download_finished.connect(self._on_download_finished)
         signal_bus.enhance_started.connect(self._on_enhance_started)
         signal_bus.enhance_finished.connect(self._on_enhance_finished)
@@ -275,10 +276,32 @@ class TaskInterface(Interface):
         self._dl_view.add_card(card, job_id)
 
     def _on_download_progress(self, job_id: str, progress: float) -> None:
+        # Kept for bare-progress updates (e.g. indeterminate phase before detail arrives).
         card = self._dl_view.find_card(job_id)
         if isinstance(card, VODDownloadingTaskCard):
             pct = int(max(0.0, min(1.0, progress)) * 100)
-            card.setInfo(VODDownloadProgressInfo(currentChunk=pct, totalChunks=100))
+            card.progressBar.setRange(0, 100)
+            card.progressBar.setValue(pct)
+
+    def _on_download_progress_detail(
+        self,
+        job_id: str,
+        pct: float,
+        speed: str,
+        eta: str,
+        cur_size: str,
+        tot_size: str,
+    ) -> None:
+        card = self._dl_view.find_card(job_id)
+        if isinstance(card, VODDownloadingTaskCard):
+            card.setInfo(VODDownloadProgressInfo(
+                speed=speed,
+                remainTime=eta,
+                currentSize=cur_size,
+                totalSize=tot_size,
+                currentChunk=int(max(0.0, min(1.0, pct)) * 100),
+                totalChunks=100,
+            ))
 
     def _on_download_finished(
         self, job_id: str, success: bool, _url: str, filepath: str, size_bytes: int

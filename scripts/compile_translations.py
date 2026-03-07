@@ -133,6 +133,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "The installer is downloading. The app will close when ready.": "安装程序正在下载，准备好后应用将关闭。",
         "Update failed": "更新失败",
         "Could not download the update. Try again later.": "无法下载更新，请稍后重试。",
+        # Exit Handler
+        "Exit Application": "退出应用程序",
+        "Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.": "确定要完全退出VOK吗？\n\n这将关闭所有下载和后台进程。",
+        "Exit": "退出",
+        "Cancel": "取消",
     },
     "ja_JP": {
         "Included Tools & Features": "ツールと機能",
@@ -243,6 +248,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "The installer is downloading. The app will close when ready.": "インストーラをダウンロード中です。準備ができるとアプリが閉じます。",
         "Update failed": "アップデート失敗",
         "Could not download the update. Try again later.": "アップデートをダウンロードできませんでした。後でもう一度お試しください。",
+        # Exit Handler
+        "Exit Application": "アプリケーションを終了",
+        "Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.": "VOKを完全に終了してもよろしいですか？\n\nすべてのダウンロードとバックグラウンドプロセスが終了されます。",
+        "Exit": "終了",
+        "Cancel": "キャンセル",
     },
     "ko_KR": {
         "Included Tools & Features": "포함된 도구 및 기능",
@@ -355,6 +365,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "The installer is downloading. The app will close when ready.": "설치 프로그램을 다운로드 중입니다. 준비되면 앱이 닫힙니다.",
         "Update failed": "업데이트 실패",
         "Could not download the update. Try again later.": "업데이트를 다운로드할 수 없습니다. 나중에 다시 시도하세요.",
+        # Exit Handler
+        "Exit Application": "응용 프로그램 종료",
+        "Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.": "VOK를 완전히 종료하시겠습니까?\n\n모든 다운로드와 백그라운드 프로세스가 종료됩니다.",
+        "Exit": "종료",
+        "Cancel": "취소",
     },
     "ru_RU": {
         "Included Tools & Features": "Инструменты и функции",
@@ -469,6 +484,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "The installer is downloading. The app will close when ready.": "Установщик загружается. Приложение закроется, когда будет готово.",
         "Update failed": "Ошибка обновления",
         "Could not download the update. Try again later.": "Не удалось загрузить обновление. Попробуйте позже.",
+        # Exit Handler
+        "Exit Application": "Выйти из приложения",
+        "Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.": "Вы уверены, что хотите полностью выйти из VOK?\n\nЭто закроет все загрузки и фоновые процессы.",
+        "Exit": "Выйти",
+        "Cancel": "Отмена",
     },
     "km_KH": {
         "Included Tools & Features": "ឧបករណ៍ និងមុខងារ",
@@ -499,7 +519,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
             "3. ចុច ទាញយក — តាមដានវឌ្ឍនភាពនៅផ្ទាំង កំណត់ហេតុ"
         ),
         "Dashboard": "ផ្ទាំងគ្រប់គ្រង",
-        "VOK Downloader": "VOK កម្មវិធីទាញយក",
+        "VOK Downloader": "VOK Get",
         "View on GitHub": "មើលនៅ GitHub",
         "Watch tutorial on YouTube": "មើលការណែនាំនៅ YouTube",
         (
@@ -583,6 +603,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "The installer is downloading. The app will close when ready.": "កំពុងទាញយកកម្មវិធីដំឡើង។ កម្មវិធីនឹងបិទនៅពេលរួចរាល់។",
         "Update failed": "ការធ្វើបច្ចុប្បន្នភាពបរាជ័យ",
         "Could not download the update. Try again later.": "មិនអាចទាញយកបច្ចុប្បន្នភាពបានទេ។ ព្យាយាមម្ដងទៀតនៅពេលក្រោយ។",
+        # Exit Handler
+        "Exit Application": "ចុះចេញពីកម្មវិធី",
+        "Are you sure you want to exit VOK completely?\n\nThis will close all downloads and background processes.": "តើអ្នកប្រាកដថាចង់ចេញពី VOK ទាំងស្រុងឬទេ?\n\nនេះនឹងបិទការទាញយកទាំងអស់ និងដំណើរការផ្ទៃខាងក្រោយ។",
+        "Exit": "ចេញ",
+        "Cancel": "បោះបង់",
     },
 }
 

@@ -383,5 +383,25 @@ Update now? The app will close and the new version will be installed.</source>
             <source>Could not download the update. Try again later.</source>
             <translation>업데이트를 다운로드할 수 없습니다. 나중에 다시 시도하세요.</translation>
         </message>
+        <message>
+            <source>Exit Application</source>
+            <translation>응용 프로그램 종료</translation>
+        </message>
+        <message>
+            <source>Are you sure you want to exit VOK completely?
+
+This will close all downloads and background processes.</source>
+            <translation>VOK를 완전히 종료하시겠습니까?
+
+모든 다운로드와 백그라운드 프로세스가 종료됩니다.</translation>
+        </message>
+        <message>
+            <source>Exit</source>
+            <translation>종료</translation>
+        </message>
+        <message>
+            <source>Cancel</source>
+            <translation>취소</translation>
+        </message>
     </context>
 </TS>

@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
 from PyQt5.QtSql import QSqlDatabase
@@ -8,6 +8,8 @@ import app
 from app.common.paths import PROJECT_ROOT
 from app.common.database import DBInitializer, DatabaseThread, sqlSignalBus, SqlResponse
 from app.common.signal_bus import signal_bus
+from app.common.logger import Logger
+from app.common.exit_app import initialize_exit_handler, ExitHandler
 from app.config import load_settings
 from ..common.icon import Icon
 from ..common import resource
@@ -18,6 +20,11 @@ class MainWindow(MSFluentWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.logger = Logger("main_window")
+        
+        # Initialize exit handler
+        self.exit_handler = None  # Will be set after window is fully initialized
+        
         self.initDatabase()
         self.initWindow()
 
@@ -49,6 +56,10 @@ class MainWindow(MSFluentWindow):
             self.switchTo(self.downloader)
 
         self.connectSignalToSlot()
+        
+        # Initialize exit handler after all components are created
+        initialize_exit_handler(self)
+        self.exit_handler = ExitHandler(self)
 
     def initWindow(self):
         """Initialize window size, title, and position."""
@@ -113,15 +124,43 @@ class MainWindow(MSFluentWindow):
     # ── Window lifecycle ─────────────────────────────────────────────────
 
     def closeEvent(self, event):
-        """Hide to system tray instead of closing."""
-        event.ignore()
-        self.hide()
+        """Handle window close event - show confirmation dialog or hide to tray."""
+        # Check if this is a forced shutdown (Alt+F4, X button with Shift, etc.)
+        modifiers = QApplication.keyboardModifiers()
+        
+        # Load settings to check close-to-tray behavior
+        from app.config import load_settings
+        settings = load_settings()
+        close_to_tray = settings.get("close_to_system_tray", True)
+        
+        if modifiers & Qt.ShiftModifier:
+            # Force exit when Shift is held during close - show confirmation
+            if self.exit_handler and self.exit_handler.request_exit_with_confirmation(self, "shift_close"):
+                event.accept()
+            else:
+                self.logger.info("User cancelled exit, hiding to tray")
+                event.ignore()
+                self.hide()
+        else:
+            # Normal close behavior based on settings
+            if close_to_tray:
+                # Hide to system tray (default behavior)
+                self.logger.info("Window closed, hiding to system tray")
+                event.ignore()
+                self.hide()
+            else:
+                # Exit application directly (with confirmation if enabled)
+                if self.exit_handler and self.exit_handler.request_exit_with_confirmation(self, "window_close"):
+                    event.accept()
+                else:
+                    # User cancelled exit, stay open
+                    event.ignore()
 
     def onExit(self):
-        """Clean up: hide tray icon, close DB connection, quit app."""
-        self.systemTrayIcon.hide()
-        db = QSqlDatabase.database(DBInitializer.CONNECTION_NAME)
-        if db.isOpen():
-            db.close()
-        QSqlDatabase.removeDatabase(DBInitializer.CONNECTION_NAME)
-        QApplication.instance().quit()
+        """Perform application exit using the centralized exit handler."""
+        if self.exit_handler:
+            self.exit_handler.perform_exit()
+        else:
+            # Fallback if exit handler not initialized
+            self.logger.warning("Exit handler not initialized, using fallback exit")
+            QApplication.instance().quit()

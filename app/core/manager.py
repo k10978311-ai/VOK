@@ -43,6 +43,8 @@ class DownloadManager(QObject):
 
     log_line = pyqtSignal(str, str)
     progress = pyqtSignal(str, float)
+    # (job_id, pct, speed_str, eta_str, current_size_str, total_size_str)
+    job_progress_detail = pyqtSignal(str, float, str, str, str, str)
     job_finished = pyqtSignal(str, bool, str, str, int)
 
     def __init__(self, max_workers: int | None = None, parent=None):
@@ -91,6 +93,9 @@ class DownloadManager(QObject):
         def on_progress(v: float):
             self.progress.emit(job.job_id, v)
 
+        def on_progress_detail(pct: float, speed: str, eta: str, cur: str, tot: str):
+            self.job_progress_detail.emit(job.job_id, pct, speed, eta, cur, tot)
+
         def on_finished(success: bool, message: str, filepath: str, size_bytes: int):
             self.job_finished.emit(job.job_id, success, message, filepath, size_bytes)
             self._running.pop(job.job_id, None)
@@ -98,6 +103,7 @@ class DownloadManager(QObject):
 
         worker.log_line.connect(on_log)
         worker.progress.connect(on_progress)
+        worker.progress_detail.connect(on_progress_detail)
         worker.finished_signal.connect(on_finished)
         self._running[job.job_id] = worker
         worker.start()

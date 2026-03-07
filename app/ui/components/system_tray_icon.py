@@ -21,7 +21,7 @@ class SystemTrayIcon(QSystemTrayIcon):
             ),
             Action(
                 self.tr("Exit"),
-                triggered=QApplication.instance().quit,
+                triggered=self._on_exit,
             ),
         ])
         self.setContextMenu(self.menu)
@@ -33,3 +33,17 @@ class SystemTrayIcon(QSystemTrayIcon):
             w.showNormal()
             w.raise_()
             w.activateWindow()
+    
+    def _on_exit(self):
+        """Request application exit using the main window's exit handler."""
+        w = self.parent().window() if self.parent() else None
+        
+        if w and hasattr(w, 'exit_handler') and w.exit_handler:
+            # Use the organized exit handler with confirmation
+            w.exit_handler.request_exit_with_confirmation(w, "system_tray_exit")
+        elif w and hasattr(w, 'onExit'):
+            # Fallback to main window's onExit method
+            w.onExit()
+        else:
+            # Last resort fallback
+            QApplication.instance().quit()
