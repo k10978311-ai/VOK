@@ -13,7 +13,7 @@ from app.common.exit_app import initialize_exit_handler, ExitHandler
 from app.config import load_settings
 from ..common.icon import Icon
 from ..common import resource
-from .views import DashboardView, DownloaderView, SettingsView, TaskInterface
+from .views import BatchEnhanceInterface, CliperInterface, DashboardView, DownloaderView, M3u8Interface, SettingsView, TaskInterface
 from app.ui.components.system_tray_icon import SystemTrayIcon
 class MainWindow(MSFluentWindow):
     """Fluent-style window with download and analytics tools."""
@@ -31,6 +31,9 @@ class MainWindow(MSFluentWindow):
         self.dashboard = DashboardView(self)
         self.downloader = DownloaderView(self)
         self.taskInterface = TaskInterface(self)
+        self.batchEnhance = BatchEnhanceInterface(self)
+        self.clipper = CliperInterface(self)
+        self.m3u8Download = M3u8Interface(self)
         self.systemTrayIcon = SystemTrayIcon(self)
         # self.studio = VokStudioView(self)
         # self.logs = LogsView(self)
@@ -38,6 +41,9 @@ class MainWindow(MSFluentWindow):
 
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Home")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
+        self.addSubInterface(self.batchEnhance, FluentIcon.ZOOM_IN, "BE")
+        self.addSubInterface(self.clipper, FluentIcon.CUT, "Clipper")
+        self.addSubInterface(self.m3u8Download, FluentIcon.LINK, "M3U8")
         self.addSubInterface(self.taskInterface, Icon.CLOUD_DOWNLOAD, "Tasks")
 
         self.addSubInterface(
