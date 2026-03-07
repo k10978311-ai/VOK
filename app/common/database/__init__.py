@@ -92,19 +92,34 @@ class DatabaseThread(QThread):
         super().__init__(parent=parent)
         self.database = Database(db, self)
         self.tasks = deque()
+        self._stop_requested = False
 
         sqlSignalBus.fetchDataSig.connect(self.onFetchData)
 
     def run(self):
-        while self.tasks:
+        while self.tasks and not self._stop_requested:
             task, request = self.tasks.popleft()
-            result = task(**request.params)
-            sqlSignalBus.dataFetched.emit(SqlResponse(result, request.slot))
+            try:
+                result = task(**request.params)
+                if not self._stop_requested:
+                    sqlSignalBus.dataFetched.emit(SqlResponse(result, request.slot))
+            except Exception as e:
+                # Log error but continue processing
+                print(f"Database task error: {e}")
+                if hasattr(request, 'slot') and request.slot:
+                    sqlSignalBus.dataFetched.emit(SqlResponse(None, request.slot))
 
     def onFetchData(self, request: SqlRequest):
+        if self._stop_requested:
+            return
         service = getattr(self.database, request.service)
         task = getattr(service, request.method)
         self.tasks.append((task, request))
 
-        if not self.isRunning():
+        if not self.isRunning() and not self._stop_requested:
             self.start()
+    
+    def stop_gracefully(self):
+        """Request the thread to stop gracefully."""
+        self._stop_requested = True
+        self.tasks.clear()  # Clear remaining tasks

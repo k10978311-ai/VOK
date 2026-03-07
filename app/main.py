@@ -1,6 +1,8 @@
 """VOK - Video downloader and content scraper. Entry point."""
 
 import sys
+import signal
+import atexit
 
 from PyQt5.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QIcon
@@ -14,6 +16,9 @@ from app.common.i18n import apply_language, LANGUAGES
 from app.config import load_settings
 from app.ui.main_window import MainWindow
 from app.ui.theme import apply_app_palette
+
+# Global reference to main window for cleanup
+_main_window = None
 
 
 class _StartupUpdateChecker(QThread):
@@ -62,7 +67,31 @@ def main() -> int:
     setThemeColor(QColor(theme_color))
     apply_app_palette(theme_name, theme_color)
 
+    # Setup signal handlers for graceful shutdown
+    def cleanup_handler():
+        if '_main_window' in globals() and _main_window:
+            try:
+                # Use the organized exit handler if available
+                if hasattr(_main_window, 'exit_handler') and _main_window.exit_handler:
+                    _main_window.exit_handler.perform_exit(force=True)
+                else:
+                    _main_window.onExit()
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+                sys.exit(1)
+    
+    def signal_handler(signum, frame):
+        print(f"\nReceived signal {signum}, performing cleanup...")
+        cleanup_handler()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    atexit.register(cleanup_handler)
+
     window = MainWindow()
+    global _main_window
+    _main_window = window
 
     logo_path = PROJECT_ROOT / "resources" / "logo.png"
     splash_icon = QIcon(str(logo_path)) if logo_path.exists() else FluentIcon.DOWNLOAD
