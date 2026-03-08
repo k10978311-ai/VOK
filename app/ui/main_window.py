@@ -43,8 +43,8 @@ class MainWindow(MSFluentWindow):
         self.addSubInterface(self.dashboard, FluentIcon.HOME, "Home")
         self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
         self.addSubInterface(self.batchEnhance, FluentIcon.ZOOM_IN, "BE")
-        self.addSubInterface(self.clipper, FluentIcon.CUT, "Clipper")
-        self.addSubInterface(self.m3u8Download, FluentIcon.LINK, "M3U8")
+        # self.addSubInterface(self.clipper, FluentIcon.CUT, "Clipper")
+        # self.addSubInterface(self.m3u8Download, FluentIcon.LINK, "M3U8")
         self.addSubInterface(self.taskInterface, Icon.CLOUD_DOWNLOAD, "Tasks")
 
         self.addSubInterface(
