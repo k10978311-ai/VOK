@@ -133,3 +133,46 @@ def getSystemProxy() -> str:
         except (OSError, KeyError):
             pass
     return os.environ.get("http_proxy", "") or os.environ.get("HTTP_PROXY", "")
+
+
+# ── File types ─────────────────────────────────────────────────────────────────
+
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv", ".flv"}
+
+# ── Pagination ─────────────────────────────────────────────────────────────────
+
+PAGE_SIZE = 50
+
+# ── Job status constants ───────────────────────────────────────────────────────
+
+ST_PENDING = "Pending"
+ST_QUEUED  = "Queued"
+ST_RUNNING = "Running"
+ST_DONE    = "Done"
+ST_ERROR   = "Error"
+
+STATUS_COLOR: dict[str, str] = {
+    ST_PENDING: "#888888",
+    ST_QUEUED:  "#AAAAAA",
+    ST_RUNNING: "#3B9EFF",
+    ST_DONE:    "#4CAF50",
+    ST_ERROR:   "#F44336",
+}
+
+
+# ── Format helpers ─────────────────────────────────────────────────────────────
+
+def fmt_duration(secs: float) -> str:
+    if secs < 0:
+        return "\u2014"
+    m, s = int(secs) // 60, int(secs) % 60
+    return f"{m}m {s:02d}s" if m else f"{s}s"
+
+
+def fmt_eta(secs: float, status: str) -> str:
+    """Rough estimate: ~0.5\u00d7 realtime for libx264 fast. Only shown for pending/queued."""
+    if status in (ST_RUNNING, ST_DONE, ST_ERROR) or secs < 0:
+        return "\u2014"
+    est = max(1.0, secs * 0.5)
+    m, s = int(est) // 60, int(est) % 60
+    return f"~{m}m {s:02d}s" if m else f"~{s}s"

@@ -67,3 +67,4 @@ def probe_video_meta(path: str) -> tuple[str, float]:
         return resolution, duration
     except Exception:
         return "—", -1.0
+

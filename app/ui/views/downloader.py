@@ -219,9 +219,6 @@ class DownloaderView(QFrame):
         self._preview_progress.setVisible(False)
         lay.addWidget(self._preview_progress)
 
-        self._sel_status = BodyLabel("", self._selective_card)
-        lay.addWidget(self._sel_status)
-
         # Checkable playlist table
         self._sel_table = TableWidget(self._selective_card)
         self._sel_table.setColumnCount(5)
@@ -334,9 +331,6 @@ class DownloaderView(QFrame):
 
     def _preview_playlist(self):
         url = self._url_edit.text().strip()
-        if not url:
-            self._sel_status.setText("Enter a URL first.")
-            return
         if self._playlist_worker and self._playlist_worker.isRunning():
             return
 
@@ -349,7 +343,6 @@ class DownloaderView(QFrame):
         self._playlist_worker.finished_signal.connect(self._on_preview_done)
         self._preview_progress.setVisible(False)
         self._preview_btn.setEnabled(False)
-        self._sel_status.setText("Fetching playlist…")
         self._show_state_tooltip("Playlist preview", "Fetching entries…")
         self._playlist_worker.start()
 
@@ -357,12 +350,8 @@ class DownloaderView(QFrame):
         total = len(entries)
         if total > MAX_PLAYLIST_DISPLAY:
             display_entries = entries[:MAX_PLAYLIST_DISPLAY]
-            self._sel_status.setText(
-                f"Showing first {MAX_PLAYLIST_DISPLAY} of {total} entries. Use Select All / Deselect All then Download."
-            )
         else:
             display_entries = entries
-            self._sel_status.setText("")
         self._sel_entries = display_entries
         self._sel_table.setUpdatesEnabled(False)
         try:
@@ -382,7 +371,6 @@ class DownloaderView(QFrame):
     def _on_preview_done(self, success: bool, msg: str):
         self._preview_progress.setVisible(False)
         self._preview_btn.setEnabled(True)
-        self._sel_status.setText(msg)
         self._close_state_tooltip()
         if not success:
             title = "Not supported" if "not supported" in msg.lower() else "Preview failed"

@@ -72,6 +72,7 @@ _DEFAULTS = {
     "enhance_bg_type": "blur",
     "enhance_bg_color": "#000000",
     "enhance_task_store_history": True,
+    "concurrent_enhance": 2,
     
     # Exit application behavior settings
     "exit_confirmation": True,

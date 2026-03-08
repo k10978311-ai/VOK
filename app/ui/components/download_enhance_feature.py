@@ -1,5 +1,3 @@
-"""Enhance download card: URL + stream-edit options (logo, flip, color, speed)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -75,7 +73,6 @@ BG_TYPE_OPTIONS = ["Blur", "Color", "Stretch"]
 
 
 # ── Enhance feature card ──────────────────────────────────────────────────────
-
 class DownloadEnhanceFeature(QWidget):
     """Enhance-download section: URL input + SettingCard options + color popup."""
 
@@ -296,6 +293,19 @@ class DownloadEnhanceFeature(QWidget):
         self._keep_card.hBoxLayout.addSpacing(16)
         self._group.addSettingCard(self._keep_card)
 
+        # Concurrent enhance tasks
+        self._concurrent_card = SettingCard(
+            FluentIcon.SPEED_HIGH,
+            "Concurrent tasks",
+            "Maximum number of videos enhanced simultaneously (1–4)",
+        )
+        self._concurrent_spin = CompactSpinBox()
+        self._concurrent_spin.setRange(1, 4)
+        self._concurrent_spin.setValue(2)
+        self._concurrent_card.hBoxLayout.addWidget(self._concurrent_spin)
+        self._concurrent_card.hBoxLayout.addSpacing(16)
+        self._group.addSettingCard(self._concurrent_card)
+
         # Auto defaults
         # self._auto_card = SettingCard(
         #     FluentIcon.SYNC,
@@ -321,6 +331,7 @@ class DownloadEnhanceFeature(QWidget):
         self._flip_combo.currentIndexChanged.connect(self._save_config)
         self._speed_combo.currentIndexChanged.connect(self._save_config)
         self._keep_original_switch.checkedChanged.connect(self._save_config)
+        self._concurrent_spin.valueChanged.connect(self._save_config)
         # ar_combo already connected via currentTextChanged → _on_aspect_ratio_changed → _save_config
         # bg_type_combo already connected via currentTextChanged → _on_bg_type_changed → _save_config
         # _self._auto_switch.checkedChanged.connect(self._on_auto_changed)
@@ -420,6 +431,7 @@ class DownloadEnhanceFeature(QWidget):
         self._saturation = int(s.get("enhance_saturation", 0))
         self._color_summary_lbl.setText(self._color_summary())
         self._keep_original_switch.setChecked(s.get("enhance_keep_original", True))
+        self._concurrent_spin.setValue(max(1, min(4, int(s.get("concurrent_enhance", 2)))))
         # Aspect ratio
         ar = s.get("enhance_aspect_ratio", "original")
         ar_cap = ar.upper() if ar in ("16:9", "9:16", "4:3", "1:1") else ar.capitalize()
@@ -459,6 +471,7 @@ class DownloadEnhanceFeature(QWidget):
         s["enhance_aspect_ratio"] = opts.aspect_ratio
         s["enhance_bg_type"] = opts.bg_type
         s["enhance_bg_color"] = opts.bg_color
+        s["concurrent_enhance"] = self._concurrent_spin.value()
         save_settings(s)
 
     # ── Public API ────────────────────────────────────────────────────────

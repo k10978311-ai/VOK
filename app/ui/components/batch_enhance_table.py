@@ -25,14 +25,20 @@ from qfluentwidgets import (
 
 from app.ui.utils import format_size
 
-# ── Constants ──────────────────────────────────────────────────────────────────
+from app.common.utils import (
+    ST_PENDING,
+    ST_QUEUED,
+    ST_RUNNING,
+    ST_DONE,
+    ST_ERROR,
+    STATUS_COLOR,
+    VIDEO_EXTENSIONS,
+    PAGE_SIZE,
+    fmt_duration,
+    fmt_eta,
+)
 
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".wmv", ".flv"}
 
-PAGE_SIZE     = 50
-MAX_CONCURRENT = 2
-
-# Column indices
 COL_IDX      = 0
 COL_NAME     = 1
 COL_SIZE     = 2
@@ -45,39 +51,6 @@ COL_PROGRESS = 7
 COLS = ["#", "File Name", "Size", "Resolution", "Duration", "Est. Time", "Status", "Progress"]
 
 TABLE_QSS = "QTableView::item { padding-left: 8px; padding-right: 8px; }"
-
-# Job status constants
-ST_PENDING = "Pending"
-ST_QUEUED  = "Queued"
-ST_RUNNING = "Running"
-ST_DONE    = "Done"
-ST_ERROR   = "Error"
-
-STATUS_COLOR: dict[str, str] = {
-    ST_PENDING: "#888888",
-    ST_QUEUED:  "#AAAAAA",
-    ST_RUNNING: "#3B9EFF",
-    ST_DONE:    "#4CAF50",
-    ST_ERROR:   "#F44336",
-}
-
-
-# ── Format helpers ─────────────────────────────────────────────────────────────
-
-def _fmt_duration(secs: float) -> str:
-    if secs < 0:
-        return "—"
-    m, s = int(secs) // 60, int(secs) % 60
-    return f"{m}m {s:02d}s" if m else f"{s}s"
-
-
-def _fmt_eta(secs: float, status: str) -> str:
-    """Rough estimate: ~0.5× realtime for libx264 fast. Only shown for pending/queued."""
-    if status in (ST_RUNNING, ST_DONE, ST_ERROR) or secs < 0:
-        return "—"
-    est = max(1.0, secs * 0.5)
-    m, s = int(est) // 60, int(est) % 60
-    return f"~{m}m {s:02d}s" if m else f"~{s}s"
 
 
 # ── Widget ─────────────────────────────────────────────────────────────────────
@@ -251,7 +224,7 @@ class BatchEnhanceTable(QWidget):
             self.table.setItem(row, COL_RES, res_item)
 
             # Duration
-            dur_item = QTableWidgetItem(_fmt_duration(duration))
+            dur_item = QTableWidgetItem(fmt_duration(duration))
             dur_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, COL_DURATION, dur_item)
 
@@ -263,7 +236,7 @@ class BatchEnhanceTable(QWidget):
             self.table.setItem(row, COL_STATUS, status_item)
 
             # Est. Time — shown only for pending/queued
-            eta_item = QTableWidgetItem(_fmt_eta(duration, st))
+            eta_item = QTableWidgetItem(fmt_eta(duration, st))
             eta_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, COL_ETA, eta_item)
 

@@ -1,5 +1,5 @@
 [project]
-name = "vok"
+name = "vok-get"
 version = "0.1.7"
 description = "Scail Media video downloader and content scraper - download videos and scrape video metadata/content"
 readme = "README.md"

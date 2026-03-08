@@ -27,12 +27,9 @@ from qfluentwidgets import (
 
 from app.common.signal_bus import signal_bus
 from app.common.concurrent.enhance_worker import EnhancePostProcessWorker
-from app.ui.components.batch_enhance_table import (
-    BatchEnhanceTable,
-    COL_DURATION,
-    COL_NAME,
-    COL_SIZE,
-    MAX_CONCURRENT,
+from app.config import load_settings
+from app.common.utils import (
+
     PAGE_SIZE,
     ST_DONE,
     ST_ERROR,
@@ -41,6 +38,7 @@ from app.ui.components.batch_enhance_table import (
     ST_RUNNING,
     VIDEO_EXTENSIONS,
 )
+from app.ui.components.batch_enhance_table import BatchEnhanceTable
 from app.ui.dialogs.enhance_setting_dialog import EnhanceSettingDialog
 from app.ui.helpers.batch_enhance import (
     build_output_path,
@@ -50,7 +48,14 @@ from app.ui.helpers.batch_enhance import (
 
 from .base import BaseView
 
-
+COL_IDX      = 0
+COL_NAME     = 1
+COL_SIZE     = 2
+COL_RES      = 3
+COL_DURATION = 4
+COL_ETA      = 5
+COL_STATUS   = 6
+COL_PROGRESS = 7
 class BatchEnhanceInterface(BaseView):
     """Batch Enhance: add videos → configure settings → run enhancement queue."""
 
@@ -229,7 +234,7 @@ class BatchEnhanceInterface(BaseView):
             else [v[1] for v in self._videos]
         )
         for path in paths:
-            if self._statuses.get(path, (ST_PENDING, ""))[0] in (ST_QUEUED, ST_RUNNING):
+            if self._statuses.get(path, (ST_PENDING, ""))[0] in (ST_QUEUED, ST_RUNNING, ST_DONE):
                 continue
             self._statuses[path] = (ST_QUEUED, "Queued")
             if path not in self._queue:
@@ -285,7 +290,8 @@ class BatchEnhanceInterface(BaseView):
     # ── Enhancement pipeline ──────────────────────────────────────────────────
 
     def _pump_queue(self) -> None:
-        while len(self._workers) < MAX_CONCURRENT and self._queue:
+        max_concurrent = max(1, min(4, int(load_settings().get("concurrent_enhance", 2))))
+        while len(self._workers) < max_concurrent and self._queue:
             path = self._queue.popleft()
             if not os.path.isfile(path) or path in self._workers:
                 self._statuses[path] = (ST_ERROR, "File missing")
