@@ -10,6 +10,7 @@ from .settings import SettingsView
 from .task_interface import TaskInterface
 from .vok_studio import VokStudioView
 from .about_interface import AboutInterface
+from .home_interface import HomeInterface
 
 __all__ = [
     "BatchEnhanceInterface",
@@ -22,4 +23,5 @@ __all__ = [
     "TaskInterface",
     "VokStudioView",
     "AboutInterface",
+    "HomeInterface",
 ]
