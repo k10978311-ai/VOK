@@ -3,11 +3,10 @@
 import os
 from urllib.parse import urlparse
 
-from PyQt5.QtCore import QStandardPaths, Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -204,24 +203,18 @@ class UrlDownloadInterface(QWidget):
                 )
 
     def _on_action_clicked(self):
-        if not self._url_input.text():
-            self._browse_file()
-        else:
-            self._submit()
-
-    def _browse_file(self):
-        from PyQt5.QtWidgets import QFileDialog, QStandardPaths
-        start = QStandardPaths.writableLocation(QStandardPaths.DesktopLocation)
-        exts = " ".join(f"*.{e}" for e in sorted(SUPPORTED_EXTENSIONS))
-        path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("Select media file"), start,
-            f"{self.tr('Media files')} ({exts})"
-        )
-        if path:
-            self._url_input.setText(path)
+        self._submit()
 
     def _submit(self):
         text = self._url_input.text().strip()
+        if not text:
+            InfoBar.warning(
+                self.tr("Empty input"),
+                self.tr("Please enter a URL or drop a media file first."),
+                duration=INFOBAR_MS_WARNING,
+                parent=self,
+            )
+            return
         if os.path.isfile(text):
             self.finished.emit(text)
         elif self._is_valid_url(text):

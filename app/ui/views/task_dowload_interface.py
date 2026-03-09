@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent, QKeyEvent
 from PyQt5.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QHeaderView,
     QVBoxLayout,
@@ -29,6 +27,13 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
+from app.ui.components.download_task_model import (
+    DownloadTaskModel,
+    COL_IDX, COL_TITLE, COL_HOST, COL_FORMAT, COL_STATUS, COL_SIZE, COL_PROGRESS, COL_PATH,
+    _STATUS_PENDING, _STATUS_RUNNING, _STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED,
+)
+from app.ui.dialogs import ClipboardSettingsDialog, ClearOldTasksDialog
+
 INFOBAR_MS_SUCCESS = 3000
 INFOBAR_MS_ERROR   = 5000
 INFOBAR_MS_WARNING = 4000
@@ -41,146 +46,6 @@ AUDIO_EXTENSIONS = {
     "mp3", "aac", "wav", "flac", "ogg", "m4a", "opus", "wma",
 }
 SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
-
-# Table column indices
-COL_IDX      = 0
-COL_TITLE    = 1
-COL_HOST     = 2
-COL_FORMAT   = 3
-COL_STATUS   = 4
-COL_SIZE     = 5
-COL_PROGRESS = 6
-COL_PATH     = 7
-
-_COL_HEADERS = ["#", "Title", "Host", "Format", "Status", "Size", "Progress %", "Save Path"]
-
-_STATUS_PENDING  = "Pending"
-_STATUS_RUNNING  = "Downloading"
-_STATUS_DONE     = "Done"
-_STATUS_ERROR    = "Error"
-_STATUS_CANCELED = "Canceled"
-
-
-def _open_folder(path: str) -> None:
-    try:
-        if sys.platform == "win32":
-            os.startfile(path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
-    except Exception:
-        pass
-
-
-# ── Download task table model ──────────────────────────────────────────────────
-
-class DownloadTaskModel(QAbstractTableModel):
-    """Model holding a list of download task rows."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        # Each row: dict with keys matching COL_* indices
-        self._rows: List[Dict[str, Any]] = []
-
-    # ── QAbstractTableModel interface ────────────────────────────────────────
-
-    def rowCount(self, parent: Optional[QModelIndex] = None) -> int:
-        return len(self._rows)
-
-    def columnCount(self, parent: Optional[QModelIndex] = None) -> int:
-        return len(_COL_HEADERS)
-
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # type: ignore
-        if not index.isValid():
-            return None
-        row = self._rows[index.row()]
-        col = index.column()
-
-        if role == Qt.DisplayRole:  # type: ignore
-            if col == COL_IDX:
-                return str(index.row() + 1)
-            if col == COL_TITLE:
-                return row.get("title", "")
-            if col == COL_HOST:
-                return row.get("host", "")
-            if col == COL_FORMAT:
-                return row.get("format", "")
-            if col == COL_STATUS:
-                return row.get("status", _STATUS_PENDING)
-            if col == COL_SIZE:
-                return row.get("size", "—")
-            if col == COL_PROGRESS:
-                p = row.get("progress", 0)
-                return f"{p}%" if isinstance(p, int) else "—"
-            if col == COL_PATH:
-                return row.get("path", "")
-
-        if role == Qt.TextAlignmentRole:  # type: ignore
-            if col in (COL_IDX, COL_STATUS, COL_SIZE, COL_PROGRESS):
-                return Qt.AlignCenter  # type: ignore
-        return None
-
-    def headerData(self, section: int, orientation: Qt.Orientation,
-                   role: int = Qt.DisplayRole) -> Any:  # type: ignore
-        if role == Qt.DisplayRole:  # type: ignore
-            if orientation == Qt.Horizontal:  # type: ignore
-                return _COL_HEADERS[section] if section < len(_COL_HEADERS) else None
-            if orientation == Qt.Vertical:  # type: ignore
-                return str(section + 1)
-        if role == Qt.TextAlignmentRole:  # type: ignore
-            return Qt.AlignCenter  # type: ignore
-        return None
-
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
-        if not index.isValid():
-            return Qt.NoItemFlags  # type: ignore
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable  # type: ignore
-
-    # ── Mutations ────────────────────────────────────────────────────────────
-
-    def add_task(self, title: str, host: str = "", fmt: str = "",
-                 path: str = "") -> int:
-        """Append a new pending task; returns its row index."""
-        row_idx = len(self._rows)
-        self.beginInsertRows(QModelIndex(), row_idx, row_idx)
-        self._rows.append({
-            "title":    title,
-            "host":     host,
-            "format":   fmt,
-            "status":   _STATUS_PENDING,
-            "size":     "—",
-            "progress": 0,
-            "path":     path,
-        })
-        self.endInsertRows()
-        return row_idx
-
-    def update_task(self, row_idx: int, **kwargs: Any) -> None:
-        if 0 <= row_idx < len(self._rows):
-            self._rows[row_idx].update(kwargs)
-            self.dataChanged.emit(
-                self.index(row_idx, 0),
-                self.index(row_idx, len(_COL_HEADERS) - 1),
-                [Qt.DisplayRole],  # type: ignore
-            )
-
-    def remove_selected(self, rows: List[int]) -> None:
-        for row_idx in sorted(rows, reverse=True):
-            if 0 <= row_idx < len(self._rows):
-                self.beginRemoveRows(QModelIndex(), row_idx, row_idx)
-                self._rows.pop(row_idx)
-                self.endRemoveRows()
-
-    def clear(self) -> None:
-        self.beginResetModel()
-        self._rows.clear()
-        self.endResetModel()
-
-    def get_task(self, row_idx: int) -> Optional[Dict[str, Any]]:
-        if 0 <= row_idx < len(self._rows):
-            return self._rows[row_idx]
-        return None
 
 
 # ── Main widget ────────────────────────────────────────────────────────────────
@@ -197,6 +62,13 @@ class TaskDownloadInterface(QWidget):
         self.setAttribute(Qt.WA_DeleteOnClose)  # type: ignore
 
         self._enhance_enabled: bool = False
+        self._clipboard_last_text: str = ""
+        self._clipboard_interval: int = 500  # ms
+        self._clipboard_timer = QTimer(self)
+        self._clipboard_timer.setInterval(self._clipboard_interval)
+        self._clipboard_timer.timeout.connect(self._poll_clipboard)
+        # Seed last text so the current clipboard isn't auto-added on enable
+        self._clipboard_last_text = QApplication.clipboard().text()
 
         self._init_ui()
 
@@ -223,6 +95,32 @@ class TaskDownloadInterface(QWidget):
         self.command_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)  # type: ignore
         top.addWidget(self.command_bar, 1)
 
+        # Clipboard Observer — checkable; monitors clipboard for URLs
+        self._clipboard_observer_action = Action(
+            FIF.PASTE,
+            self.tr("Clipboard Observer"),
+            triggered=self._on_clipboard_observer_toggled,
+            checkable=True,
+        )
+        self._clipboard_observer_action.setToolTip(
+            self.tr("Enable or Disable Clipboard Observer")
+        )
+        self.command_bar.addAction(self._clipboard_observer_action)
+
+        # Clipboard Observer Settings gear — enabled only when observer is active
+        self._clipboard_settings_action = Action(
+            FIF.SETTING,
+            self.tr("Clipboard Observer Settings"),
+            triggered=self._on_clipboard_observer_settings,
+        )
+        self._clipboard_settings_action.setToolTip(
+            self.tr("Configure Clipboard Observer (interval, filters)")
+        )
+        self._clipboard_settings_action.setEnabled(False)
+        self.command_bar.addAction(self._clipboard_settings_action)
+
+        self.command_bar.addSeparator()
+
         # Optimize (字幕校正) — checkable; when checked, enhance settings are allowed
         self.optimize_button = Action(
             FIF.EDIT,
@@ -247,16 +145,31 @@ class TaskDownloadInterface(QWidget):
             Action(FIF.DELETE, self.tr("Clear"), triggered=self._on_clear)
         )
 
-        # Start (PushButton) and Download (PrimaryPushButton)
-        self.start_button = PushButton(self.tr("Start"), self, icon=FIF.PLAY)
+        self.command_bar.addSeparator()
+
+        # Save Folder — pick output folder
+        self._save_folder_action = Action(
+            FIF.FOLDER,
+            self.tr("Save Folder"),
+            triggered=self._on_save_folder_clicked,
+        )
+        self._save_folder_action.setToolTip(self.tr("Set download output folder"))
+        self.command_bar.addAction(self._save_folder_action)
+
+        # Download Settings — configure format, concurrency, cookies, etc.
+        self._download_settings_action = Action(
+            FIF.SETTING,
+            self.tr("Download Settings"),
+            triggered=self._on_download_settings,
+        )
+        self._download_settings_action.setToolTip(self.tr("Configure download options"))
+        self.command_bar.addAction(self._download_settings_action)
+
+        # Start Download button
+        self.start_button = PrimaryPushButton(self.tr("Start Download"), self, icon=FIF.DOWNLOAD)
         self.start_button.setFixedHeight(34)
         self.start_button.clicked.connect(self._on_download_clicked)
         top.addWidget(self.start_button)
-
-        self.download_button = PrimaryPushButton(self.tr("Download"), self, icon=FIF.DOWNLOAD)
-        self.download_button.setFixedHeight(34)
-        self.download_button.clicked.connect(self._on_download_clicked)
-        top.addWidget(self.download_button)
 
         self.main_layout.addLayout(top)
 
@@ -313,6 +226,66 @@ class TaskDownloadInterface(QWidget):
 
     # ── Toolbar actions ────────────────────────────────────────────────────
 
+    # ── Clipboard observer ─────────────────────────────────────────────────
+
+    def _on_clipboard_observer_toggled(self, checked: bool) -> None:
+        """Start or stop monitoring the clipboard for URLs."""
+        if checked:
+            # Seed with current clipboard so we don't immediately add it
+            self._clipboard_last_text = QApplication.clipboard().text()
+            self._clipboard_timer.setInterval(self._clipboard_interval)
+            self._clipboard_timer.start()
+            self._clipboard_settings_action.setEnabled(True)
+            self.status_label.setText(self.tr("Clipboard Observer: ON"))
+        else:
+            self._clipboard_timer.stop()
+            self._clipboard_settings_action.setEnabled(False)
+            self.status_label.setText(self.tr("Clipboard Observer: OFF"))
+
+    def _on_clipboard_observer_settings(self) -> None:
+        dlg = ClipboardSettingsDialog(
+            interval=self._clipboard_interval,
+            url_filter=getattr(self, "_clipboard_url_filter", ""),
+            parent=self,
+        )
+        if dlg.exec_():
+            self._clipboard_interval = dlg.get_interval()
+            self._clipboard_url_filter: str = dlg.get_filter()
+            self._clipboard_timer.setInterval(self._clipboard_interval)
+            InfoBar.success(
+                self.tr("Settings saved"),
+                self.tr("Interval: {}  |  Filter: {}").format(
+                    f"{self._clipboard_interval} ms",
+                    self._clipboard_url_filter or self.tr("all URLs"),
+                ),
+                duration=INFOBAR_MS_SUCCESS,
+                parent=self,
+            )
+
+    def _poll_clipboard(self) -> None:
+        """Called on each timer tick; adds any new URL found in the clipboard."""
+        text = QApplication.clipboard().text().strip()
+        if not text or text == self._clipboard_last_text:
+            return
+        self._clipboard_last_text = text
+        if not text.startswith(("http://", "https://")):
+            return
+        # Apply optional domain filter
+        url_filter: str = getattr(self, "_clipboard_url_filter", "")
+        if url_filter:
+            allowed = [d.strip().lower() for d in url_filter.split(",") if d.strip()]
+            if not any(d in text.lower() for d in allowed):
+                return
+        self._add_url_task(text)
+        InfoBar.info(
+            self.tr("URL detected"),
+            self.tr("Added from clipboard: {}").format(
+                text[:60] + ("\u2026" if len(text) > 60 else "")
+            ),
+            duration=INFOBAR_MS_INFO,
+            parent=self,
+        )
+
     def _on_subtitle_optimization_changed(self, checked: bool) -> None:
         """When 字幕校正 is checked, allow enhance settings; when unchecked, disable them."""
         self._set_enhance_enabled(checked)
@@ -329,15 +302,6 @@ class TaskDownloadInterface(QWidget):
                 self.tr("Enhance settings disabled (字幕校正 off)")
             )
 
-    def _on_add_url(self) -> None:
-        from PyQt5.QtWidgets import QInputDialog
-        url, ok = QInputDialog.getText(
-            self, self.tr("Add URL"),
-            self.tr("Enter video/audio URL:"),
-        )
-        if ok and url.strip():
-            self._add_url_task(url.strip())
-
     def _add_url_task(self, url: str) -> None:
         from urllib.parse import urlparse
         try:
@@ -345,7 +309,7 @@ class TaskDownloadInterface(QWidget):
         except Exception:
             host = ""
         title = url[:60] + ("…" if len(url) > 60 else "")
-        self.model.add_task(title=title, host=host, fmt="", path="")
+        self.model.add_task(title=title, host=host, fmt="", path="", url=url)
         self.status_label.setText(self.tr(f"Added: {host or url}"))
 
     def _on_enhance_configure(self) -> None:
@@ -357,6 +321,31 @@ class TaskDownloadInterface(QWidget):
         self.model.clear()
         self.status_label.setText(self.tr("Queue cleared"))
 
+    # ── Save Folder / Download Settings ───────────────────────────────────
+
+    def _on_save_folder_clicked(self) -> None:
+        from PyQt5.QtWidgets import QFileDialog
+        from app.config.store import load_settings, save_settings
+        settings = load_settings()
+        current = settings.get("download_path", "")
+        folder = QFileDialog.getExistingDirectory(
+            self, self.tr("Select Save Folder"), current or ""
+        )
+        if folder:
+            settings["download_path"] = folder
+            save_settings(settings)
+            self.status_label.setText(self.tr("Save folder: {}").format(folder))
+            InfoBar.success(
+                self.tr("Folder saved"),
+                self.tr("Downloads will be saved to: {}").format(folder),
+                duration=INFOBAR_MS_SUCCESS,
+                parent=self,
+            )
+
+    def _on_download_settings(self) -> None:
+        from app.ui.dialogs.download_settings_dialog import DownloadSettingsDialog
+        DownloadSettingsDialog(self).exec_()
+
     # ── Download / Cancel ──────────────────────────────────────────────────
 
     def _on_download_clicked(self) -> None:
@@ -366,24 +355,51 @@ class TaskDownloadInterface(QWidget):
                 duration=INFOBAR_MS_WARNING, parent=self,
             )
             return
-        tasks = [self.model.get_task(i) for i in range(self.model.rowCount())]
-        tasks_clean = [t for t in tasks if t is not None]
+
+        # If there are finished/failed rows, prompt to clear them first
+        _FINISHED = {_STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED}
+        done_rows = [
+            i for i in range(self.model.rowCount())
+            if (t := self.model.get_task(i)) and t.get("status") in _FINISHED
+        ]
+        if done_rows:
+            dlg = ClearOldTasksDialog(len(done_rows), self)
+            if dlg.exec_():  # "Clear & Start"
+                self.model.remove_selected(done_rows)
+            # "Start Anyway" or X → continue without clearing
+
+        # Only dispatch pending tasks to the engine
+        tasks_to_run = [
+            t for i in range(self.model.rowCount())
+            if (t := self.model.get_task(i)) is not None
+            and t.get("status") == _STATUS_PENDING
+        ]
+        if not tasks_to_run:
+            InfoBar.warning(
+                self.tr("Nothing to download"),
+                self.tr("No pending tasks. Add new URLs or clear completed ones first."),
+                duration=INFOBAR_MS_WARNING, parent=self,
+            )
+            return
+
         self._enhance_enabled = self.optimize_button.isChecked()
         self.start_button.setEnabled(False)
-        self.download_button.setEnabled(False)
         self.cancel_button.show()
         self.progress_bar.setValue(0)
         self.status_label.setText(self.tr("Starting download…"))
         InfoBar.info(
             self.tr("Download started"),
-            self.tr(f"Queued {len(tasks_clean)} task(s){' with Enhance' if self._enhance_enabled else ''}."),
+            self.tr("Queued {} task(s){}.")
+            .format(
+                len(tasks_to_run),
+                self.tr(" with Enhance") if self._enhance_enabled else "",
+            ),
             duration=INFOBAR_MS_INFO, parent=self,
         )
-        self.download_requested.emit(tasks_clean)
+        self.download_requested.emit(tasks_to_run)
 
     def _on_cancel(self) -> None:
         self.start_button.setEnabled(True)
-        self.download_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.setValue(0)
         self.status_label.setText(self.tr("Cancelled"))
@@ -410,7 +426,6 @@ class TaskDownloadInterface(QWidget):
 
     def on_finished(self, video_path: str = "", output_path: str = "") -> None:
         self.start_button.setEnabled(True)
-        self.download_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.setValue(100)
         self.status_label.setText(self.tr("Done"))
@@ -425,7 +440,6 @@ class TaskDownloadInterface(QWidget):
 
     def on_error(self, error: str) -> None:
         self.start_button.setEnabled(True)
-        self.download_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.error()
         InfoBar.error(
@@ -440,7 +454,8 @@ class TaskDownloadInterface(QWidget):
         host  = task.get("host", "")
         fmt   = task.get("format", "")
         path  = task.get("file_path") or task.get("path", "")
-        self.model.add_task(title=title, host=host, fmt=fmt, path=path)
+        url   = task.get("url") or path
+        self.model.add_task(title=title, host=host, fmt=fmt, path=path, url=url)
 
     def add_url(self, url: str) -> None:
         self._add_url_task(url)
