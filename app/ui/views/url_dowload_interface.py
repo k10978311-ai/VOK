@@ -18,6 +18,8 @@ from qfluentwidgets import (
     FluentIcon,
     InfoBar,
     LineEdit,
+    MessageBoxBase,
+    PlainTextEdit,
     ProgressBar,
     ToolButton,
     themeColor,
@@ -44,7 +46,8 @@ SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 class UrlDownloadInterface(QWidget):
     """Centered URL / file-path input with drag-and-drop and progress feedback."""
 
-    finished = pyqtSignal(str)
+    finished = pyqtSignal(str)          # single URL / file path
+    bulk_finished = pyqtSignal(list)    # list[str] of validated URLs
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -107,12 +110,17 @@ class UrlDownloadInterface(QWidget):
             }
         """)
 
+        _aux_ss = "QToolButton { border: none; border-radius: 20px; background-color: rgba(128,128,128,0.18); } QToolButton:hover { background-color: rgba(128,128,128,0.28); }"
+
         self._paste_btn = ToolButton(FluentIcon.PASTE, self)
         self._paste_btn.setFixedSize(40, 40)
         self._paste_btn.setToolTip(self.tr("Paste from clipboard"))
-        self._paste_btn.setStyleSheet(
-            "QToolButton { border: none; border-radius: 20px; background-color: rgba(128,128,128,0.25); }"
-        )
+        self._paste_btn.setStyleSheet(_aux_ss)
+
+        self._bulk_btn = ToolButton(FluentIcon.COPY, self)
+        self._bulk_btn.setFixedSize(40, 40)
+        self._bulk_btn.setToolTip(self.tr("Bulk URLs — enter multiple URLs at once"))
+        self._bulk_btn.setStyleSheet(_aux_ss)
 
         self._action_btn = ToolButton(FluentIcon.DOWNLOAD, self)
         self._action_btn.setFixedSize(40, 40)
@@ -120,6 +128,7 @@ class UrlDownloadInterface(QWidget):
 
         row.addWidget(self._url_input)
         row.addWidget(self._paste_btn)
+        row.addWidget(self._bulk_btn)
         row.addWidget(self._action_btn)
         self._layout.addLayout(row)
         self._layout.addSpacing(100)
@@ -161,6 +170,7 @@ class UrlDownloadInterface(QWidget):
     def _setup_signals(self):
         self._action_btn.clicked.connect(self._on_action_clicked)
         self._paste_btn.clicked.connect(self._on_paste_clicked)
+        self._bulk_btn.clicked.connect(self._on_bulk_clicked)
         self._url_input.textChanged.connect(self._on_text_changed)
 
     # ── Slots ─────────────────────────────────────────────────────────────
@@ -172,6 +182,26 @@ class UrlDownloadInterface(QWidget):
         text = QApplication.clipboard().text().strip()
         if text:
             self._url_input.setText(text)
+
+    def _on_bulk_clicked(self):
+        dialog = _BulkUrlDialog(self)
+        if dialog.exec_():
+            urls = dialog.get_urls()
+            if urls:
+                self.bulk_finished.emit(urls)
+                InfoBar.success(
+                    self.tr("Bulk queued"),
+                    self.tr(f"{len(urls)} URL(s) sent to download queue."),
+                    duration=INFOBAR_MS_SUCCESS,
+                    parent=self,
+                )
+            else:
+                InfoBar.warning(
+                    self.tr("No valid URLs"),
+                    self.tr("Please enter at least one valid http/https URL."),
+                    duration=INFOBAR_MS_WARNING,
+                    parent=self,
+                )
 
     def _on_action_clicked(self):
         if not self._url_input.text():
@@ -267,3 +297,51 @@ class UrlDownloadInterface(QWidget):
 
     def set_url(self, text: str):
         self._url_input.setText(text)
+
+
+# ── Bulk URL dialog ────────────────────────────────────────────────────────────
+
+class _BulkUrlDialog(MessageBoxBase):
+    """Dialog for entering multiple URLs — one per line."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._setup_ui()
+        self.yesButton.setText(self.tr("Queue all"))
+        self.cancelButton.setText(self.tr("Cancel"))
+
+    def _setup_ui(self) -> None:
+        self.viewLayout.addWidget(BodyLabel(self.tr("Bulk URL Download"), self))
+
+        self._text_edit = PlainTextEdit(self)
+        self._text_edit.setPlaceholderText(
+            self.tr(
+                "Paste one URL per line:\n\n"
+                "https://youtube.com/watch?v=…\n"
+                "https://tiktok.com/@user/video/…\n"
+                "https://instagram.com/p/…\n\n"
+                "Blank lines and duplicates are ignored automatically."
+            )
+        )
+        self._text_edit.setMinimumWidth(480)
+        self._text_edit.setMinimumHeight(320)
+
+        self.viewLayout.addWidget(self._text_edit)
+        self.viewLayout.setSpacing(10)
+
+    def get_urls(self) -> list[str]:
+        """Return deduplicated, validated http/https URLs from the text box."""
+        seen: set[str] = set()
+        result: list[str] = []
+        for line in self._text_edit.toPlainText().splitlines():
+            url = line.strip()
+            if not url or url in seen:
+                continue
+            try:
+                r = urlparse(url)
+                if r.scheme in ("http", "https") and r.netloc:
+                    seen.add(url)
+                    result.append(url)
+            except ValueError:
+                pass
+        return result

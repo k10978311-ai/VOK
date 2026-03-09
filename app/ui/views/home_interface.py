@@ -29,8 +29,8 @@ class HomeInterface(QWidget):
         self._add_tab(self.task_interface, self._TAB_TASKS, self.tr("Tasks"))
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
         layout.addWidget(self.pivot)
         layout.addWidget(self.stackedWidget)
 

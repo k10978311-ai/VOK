@@ -84,7 +84,7 @@ class MainWindow(MSFluentWindow):
 
     def _apply_default_page(self):
         """Switch to the start page from settings."""
-        page = load_settings().get("default_start_page", "Download")
+        page = load_settings().get("default_start_page", "Home")
         default_widgets = {
             "Dashboard": self.home,
             "Home": self.home,
