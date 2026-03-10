@@ -1,6 +1,6 @@
 [project]
 name = "vok-get"
-version = "0.1.9"
+version = "0.2.0"
 description = "Scail Media video downloader and content scraper - download videos and scrape video metadata/content"
 readme = "README.md"
 requires-python = ">=3.12"
