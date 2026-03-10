@@ -1,0 +1,57 @@
+name: Build macOS Apple Silicon
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos-14-arm:
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Build with PyInstaller
+        run: |
+          VERSION=$(grep -E '^version\s*=' pyproject.toml | sed -E 's/^version\s*=\s*//' | tr -d '"' | tr -d "'" | xargs)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          uv run pyinstaller vok.spec --clean --noconfirm
+          codesign --force --deep --sign - dist/VOK.app 2>/dev/null || true
+
+      - name: Create DMG
+        run: |
+          ln -s /Applications dist/Applications
+
+          attempt=0
+          max_attempts=10
+          while [ $attempt -lt $max_attempts ]; do
+              hdiutil create -srcfolder "dist/" -volname "VOK" -fs HFS+ \
+                  -fsargs "-c c=64,a=16,e=16" -format UDZO -size 400m \
+                  "VOK-v${{ env.VERSION }}-macOS-arm64.dmg" && break
+
+              attempt=$((attempt + 1))
+              echo "Attempt $attempt failed, retrying..."
+              sleep 1
+          done
+
+          if [ $attempt -eq $max_attempts ]; then
+              echo "Failed to create DMG after $max_attempts attempts"
+              exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOK-v${{ env.VERSION }}-macOS-arm64
+          path: VOK-v${{ env.VERSION }}-macOS-arm64.dmg
+

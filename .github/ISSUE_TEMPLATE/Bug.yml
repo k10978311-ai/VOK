@@ -1,0 +1,51 @@
+name: Bug Report
+description: File a bug report
+title: "[Bug]: "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please searched for historical issues and check official documentation before opening this issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Also tell us, what did you expect to happen?
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+  - type: input
+    id: OS
+    attributes:
+      label: Operation System
+      description: Which operation system are you using?
+      placeholder: ex. Windows11 23H2
+    validations:
+      required: true
+  - type: input
+    id: Fluent-M3U8
+    attributes:
+      label: Fluent-M3U8 Version
+      description: Which version of Fluent-M3U8 are you using? Please ensure that you are using the latest version!
+      placeholder: ex. v0.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to Reproduce?
+      description: A clear and concise description of what the bug is.
+      placeholder: Steps to reproduce the behavior(you can use gif to demonstrate the problem :)
+    validations:
+      required: true
+  - type: input
+    id: m3u8
+    attributes:
+      label: m3u8 URL
+      description: The m3u8 URL for reproducing issues
+      placeholder: ex. http://host/test.m3u8
+    validations:
+      required: true
+

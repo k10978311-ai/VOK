@@ -1,20 +1,21 @@
 <p align="center">
   <img src="resources/logo.png" alt="VOK" width="280"/>
 </p>
-<p align="center">
-  <strong>VOK — Video Downloader</strong>
-</p>
-
-<p align="center">
-  <strong>Download from YouTube, TikTok, Pinterest & 1000+ platforms — fast, offline, free.</strong>
-</p>
+<h1 align="center">VOK Get — Downloader</h1>
 
 <p align="center">
   <a href="https://github.com/k10978311-ai/VOK"><img src="https://img.shields.io/github/stars/k10978311-ai/VOK?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/k10978311-ai/VOK/releases/latest"><img src="https://img.shields.io/github/release/k10978311-ai/VOK.svg" alt="Latest release"></a>
+  <a style="text-decoration:none"> <img src="https://img.shields.io/badge/Python-3.12+-blue.svg?color=00B16A" alt="Python 3.12+"/></a>
+  <a style="text-decoration:none">  <img src="https://img.shields.io/badge/PyQt5-5.15+-blue?color=00B16A" alt="PyQt5 5.15+"/></a>
+  <a style="text-decoration:none"> <img src="https://img.shields.io/badge/Platform-Win32%20|%20Linux%20|%20macOS-blue?color=00B16A" alt="Platform Win32 | Linux | macOS"/></a>
 </p>
 
-A desktop application for downloading videos and scraping social media content, built with PyQt5 and a Fluent Design UI.
+</p>
+<p align="center">
+A desktop application for downloading videos and scraping social media content
+</p>
+
 
 ---
 
@@ -22,10 +23,10 @@ A desktop application for downloading videos and scraping social media content, 
 
 <div align="center">
 
-| Home | Download | Settings |
-|:---:|:---:|:---:|
+|                                Home                                 |                                  Download                                   |                                  Settings                                  |
+| :-----------------------------------------------------------------: | :-------------------------------------------------------------------------: | :------------------------------------------------------------------------: |
 | <img src="resources/images/home_tools.png" alt="Home" width="280"/> | <img src="resources/images/download_image.png" alt="Download" width="280"/> | <img src="resources/images/setting_image.png" alt="Settings" width="280"/> |
-| *Home — Quick access & features* | *Single, Bulk, Selective, Enhance* | *Download path & performance* |
+|                  _Home — Quick access & features_                   |                     _Single, Bulk, Selective, Enhance_                      |                       _Download path & performance_                        |
 
 </div>
 
@@ -34,17 +35,17 @@ A desktop application for downloading videos and scraping social media content, 
 ## Features
 
 ### Download Tab
-| Feature | Details |
-|---|---|
-| **HD Video Download** | 4K / 2160p, HD 1080p, HD 720p, Best (video+audio) |
-| **Photo / Image Download** | Downloads image posts and saves thumbnails |
-| **Audio Download** | MP3 extraction, best audio |
-| **Bulk Download** | Toggle bulk mode — paste one URL per line |
-| **Selective Download** | Preview a playlist, tick the items you want, download only those |
-| **Playlist Support** | Toggle single-video mode on/off |
-| **Parallel Downloads** | Up to 4 concurrent jobs (configurable) |
-| **Cookies Support** | Authenticated downloads via Netscape cookies file |
 
+| Feature                    | Details                                                          |
+| -------------------------- | ---------------------------------------------------------------- |
+| **HD Video Download**      | 4K / 2160p, HD 1080p, HD 720p, Best (video+audio)                |
+| **Photo / Image Download** | Downloads image posts and saves thumbnails                       |
+| **Audio Download**         | MP3 extraction, best audio                                       |
+| **Bulk Download**          | Toggle bulk mode — paste one URL per line                        |
+| **Selective Download**     | Preview a playlist, tick the items you want, download only those |
+| **Playlist Support**       | Toggle single-video mode on/off                                  |
+| **Parallel Downloads**     | Up to 4 concurrent jobs (configurable)                           |
+| **Cookies Support**        | Authenticated downloads via Netscape cookies file                |
 
 ## Requirements
 
@@ -53,9 +54,11 @@ A desktop application for downloading videos and scraping social media content, 
 - **uv** — recommended package manager (or use `pip`)
 
 ### Install FFmpeg (Windows)
+
 ```bat
 winget install ffmpeg
 ```
+
 Or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to your `PATH`.
 
 ---
@@ -63,6 +66,7 @@ Or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to your 
 ## Installation
 
 ### Option 1 — uv (recommended)
+
 ```bat
 git clone https://github.com/k10978311-ai/VOK.git
 cd VOK
@@ -71,6 +75,7 @@ uv run python run.py
 ```
 
 ### Option 2 — pip
+
 ```bat
 git clone https://github.com/k10978311-ai/VOK.git
 cd VOK
@@ -87,14 +92,17 @@ python run.py
 Standalone executables can be built with PyInstaller. **Build on macOS for a Mac app; build on Windows for a Windows .exe.**
 
 1. Install dev dependencies (includes PyInstaller):
+
    ```bash
    uv sync --extra dev
    ```
 
 2. **macOS** — from project root:
+
    ```bash
    ./scripts/build_mac.sh
    ```
+
    Output: `dist/VOK.app`
 
 3. **Windows** — from project root:
@@ -111,15 +119,15 @@ Users still need **FFmpeg** installed for audio/video merging.
 
 Settings are stored in `vok_settings.json` in the project root. You can change them from the **Settings** tab inside the app.
 
-| Setting | Default | Description |
-|---|---|---|
-| `download_path` | `downloads/` | Output folder for all downloads |
-| `single_video_default` | `true` | Skip playlist by default |
-| `theme` | `Dark` | `Auto` / `Light` / `Dark` |
-| `theme_color` | `#0078D4` | Accent colour |
-| `concurrent_downloads` | `2` | Parallel download jobs (1–4) |
-| `concurrent_fragments` | `4` | Fragments per download (1–16) |
-| `cookies_file` | *(empty)* | Path to Netscape cookies file for auth |
+| Setting                | Default      | Description                            |
+| ---------------------- | ------------ | -------------------------------------- |
+| `download_path`        | `downloads/` | Output folder for all downloads        |
+| `single_video_default` | `true`       | Skip playlist by default               |
+| `theme`                | `Dark`       | `Auto` / `Light` / `Dark`              |
+| `theme_color`          | `#0078D4`    | Accent colour                          |
+| `concurrent_downloads` | `2`          | Parallel download jobs (1–4)           |
+| `concurrent_fragments` | `4`          | Fragments per download (1–16)          |
+| `cookies_file`         | _(empty)_    | Path to Netscape cookies file for auth |
 
 ### Using a Cookies File (authenticated platforms)
 
@@ -129,33 +137,33 @@ Export cookies from your browser using the [Get cookies.txt LOCALLY](https://chr
 
 ## Download Formats
 
-| Format | Description |
-|---|---|
-| Best (video+audio) | Highest quality, any codec |
-| HD 1080p | Up to 1080p resolution |
-| HD 720p | Up to 720p resolution |
-| 4K / 2160p | Up to 4K resolution |
-| Best video | Video stream only (no audio) |
-| Best audio | Audio stream only |
-| Video (mp4) | MP4 container preferred |
-| Audio (mp3) | Extracts audio as MP3 192kbps (FFmpeg required) |
-| Photo / Image | Image posts; also saves thumbnails |
+| Format             | Description                                     |
+| ------------------ | ----------------------------------------------- |
+| Best (video+audio) | Highest quality, any codec                      |
+| HD 1080p           | Up to 1080p resolution                          |
+| HD 720p            | Up to 720p resolution                           |
+| 4K / 2160p         | Up to 4K resolution                             |
+| Best video         | Video stream only (no audio)                    |
+| Best audio         | Audio stream only                               |
+| Video (mp4)        | MP4 container preferred                         |
+| Audio (mp3)        | Extracts audio as MP3 192kbps (FFmpeg required) |
+| Photo / Image      | Image posts; also saves thumbnails              |
 
 ---
 
 ## Dependencies
 
-| Package | Purpose |
-|---|---|
-| `PyQt5` | UI framework |
-| `PyQt-Fluent-Widgets` | Fluent Design components |
-| `yt-dlp` | Video/audio downloading & metadata extraction |
-| `requests` | HTTP requests |
-| `beautifulsoup4` + `lxml` | HTML parsing |
-| `playwright` | Browser automation (advanced scraping) |
-| `aiohttp` | Async HTTP |
-| `Pillow` | Image processing |
-| `apscheduler` | Task scheduling |
+| Package                   | Purpose                                       |
+| ------------------------- | --------------------------------------------- |
+| `PyQt5`                   | UI framework                                  |
+| `PyQt-Fluent-Widgets`     | Fluent Design components                      |
+| `yt-dlp`                  | Video/audio downloading & metadata extraction |
+| `requests`                | HTTP requests                                 |
+| `beautifulsoup4` + `lxml` | HTML parsing                                  |
+| `playwright`              | Browser automation (advanced scraping)        |
+| `aiohttp`                 | Async HTTP                                    |
+| `Pillow`                  | Image processing                              |
+| `apscheduler`             | Task scheduling                               |
 
 ---
 
