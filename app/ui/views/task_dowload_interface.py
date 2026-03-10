@@ -13,12 +13,16 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtCore import QUrl
 from qfluentwidgets import (
     Action,
     BodyLabel,
     CommandBar,
     InfoBar,
     InfoBarPosition,
+    LineEdit,
+    MessageBoxBase,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
@@ -27,9 +31,12 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
+from app.common.concurrent import MetaFetchWorker
+from app.config.store import load_settings
+from app.core.download import check_unsupported_url, detect_platform, normalize_url
 from app.ui.components.download_task_model import (
     DownloadTaskModel,
-    COL_IDX, COL_TITLE, COL_HOST, COL_FORMAT, COL_STATUS, COL_SIZE, COL_PROGRESS, COL_PATH,
+    COL_IDX, COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
     _STATUS_PENDING, _STATUS_RUNNING, _STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED,
 )
 from app.ui.dialogs import ClipboardSettingsDialog, ClearOldTasksDialog
@@ -54,6 +61,7 @@ class TaskDownloadInterface(QWidget):
     """Download queue: command bar + task table + progress bar."""
 
     download_requested = pyqtSignal(list)   # list[dict] of queued tasks
+    cancel_requested   = pyqtSignal()        # user pressed Cancel
     finished           = pyqtSignal(str, str)
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -69,6 +77,8 @@ class TaskDownloadInterface(QWidget):
         self._clipboard_timer.timeout.connect(self._poll_clipboard)
         # Seed last text so the current clipboard isn't auto-added on enable
         self._clipboard_last_text = QApplication.clipboard().text()
+        # Track running MetaFetchWorker instances so they can be cancelled on close
+        self._info_workers: list = []
 
         self._init_ui()
 
@@ -81,8 +91,8 @@ class TaskDownloadInterface(QWidget):
         self._setup_toolbar()
         self._setup_table()
         self._setup_footer()
-        # Apply enhance enabled state (uses status_label from footer)
-        self._set_enhance_enabled(False)
+        # Disable enhance action without overwriting the default status label
+        self._enhance_settings_action.setEnabled(False)
 
     # ── Toolbar ────────────────────────────────────────────────────────────
 
@@ -159,6 +169,15 @@ class TaskDownloadInterface(QWidget):
 
         self.command_bar.addSeparator()
 
+        # Add Link — type/paste a URL, fetch video info then add to queue
+        self._add_link_action = Action(
+            FIF.ADD,
+            self.tr("Add Link"),
+            triggered=self._on_add_link,
+        )
+        self._add_link_action.setToolTip(self.tr("Add a video URL and analyze its info (Ctrl+V)"))
+        self.command_bar.addAction(self._add_link_action)
+
         # Clear all
         self.command_bar.addAction(
             Action(FIF.DELETE, self.tr("Clear"), triggered=self._on_clear)
@@ -191,9 +210,10 @@ class TaskDownloadInterface(QWidget):
         hdr = self.task_table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(COL_TITLE, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(COL_PATH,  QHeaderView.Stretch)
         hdr.setSectionResizeMode(COL_IDX,   QHeaderView.Fixed)
-        self.task_table.setColumnWidth(COL_IDX, 40)
+        hdr.setSectionResizeMode(COL_HOST,  QHeaderView.Fixed)
+        self.task_table.setColumnWidth(COL_IDX,  40)
+        self.task_table.setColumnWidth(COL_HOST, 80)
 
         v_hdr = self.task_table.verticalHeader()
         v_hdr.setVisible(False)
@@ -304,14 +324,7 @@ class TaskDownloadInterface(QWidget):
             )
 
     def _add_url_task(self, url: str) -> None:
-        from urllib.parse import urlparse
-        try:
-            host = urlparse(url).netloc.replace("www.", "")
-        except Exception:
-            host = ""
-        title = url[:60] + ("…" if len(url) > 60 else "")
-        self.model.add_task(title=title, host=host, fmt="", path="", url=url)
-        self.status_label.setText(self.tr(f"Added: {host or url}"))
+        self._analyze_and_add_url(url)
 
     def _on_enhance_configure(self) -> None:
         from app.ui.dialogs.enhance_setting_dialog import EnhanceSettingDialog
@@ -321,6 +334,91 @@ class TaskDownloadInterface(QWidget):
     def _on_clear(self) -> None:
         self.model.clear()
         self.status_label.setText(self.tr("Queue cleared"))
+
+    def _on_add_link(self) -> None:
+        dlg = _AddLinkDialog(self)
+        if dlg.exec_():
+            url = dlg.get_url()
+            if url:
+                self._analyze_and_add_url(url)
+
+    def _analyze_and_add_url(self, url: str) -> None:
+        """Validate, normalize, add row immediately, then fetch video info in background."""
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            InfoBar.warning(
+                self.tr("Invalid URL"),
+                self.tr("Only http/https URLs are supported."),
+                duration=INFOBAR_MS_WARNING, parent=self,
+            )
+            return
+        errmsg = check_unsupported_url(url)
+        if errmsg:
+            InfoBar.warning(
+                self.tr("Unsupported URL"), self.tr(errmsg),
+                duration=INFOBAR_MS_WARNING, parent=self,
+            )
+            return
+        canonical, note = normalize_url(url)
+        if note:
+            InfoBar.info(
+                self.tr("URL rewritten"), self.tr(note),
+                duration=INFOBAR_MS_INFO, parent=self,
+            )
+        # Duplicate check (after normalisation so variants map to the same URL)
+        existing = self.model.find_url(canonical)
+        if existing != -1:
+            self.task_table.selectRow(existing)
+            InfoBar.warning(
+                self.tr("Duplicate URL"),
+                self.tr("This URL is already in the queue (row {}).").format(existing + 1),
+                duration=INFOBAR_MS_WARNING, parent=self,
+            )
+            return
+        platform = detect_platform(canonical)
+        host = platform if platform != "Unknown" else ""
+        if not host:
+            from urllib.parse import urlparse
+            try:
+                host = urlparse(canonical).netloc.replace("www.", "")
+            except Exception:
+                host = ""
+        # Add row immediately with URL as placeholder title
+        title_placeholder = canonical[:60] + ("…" if len(canonical) > 60 else "")
+        row_idx = self.model.add_task(
+            title=title_placeholder, host=host, fmt="", path="", url=canonical
+        )
+        self.status_label.setText(self.tr(f"Analyzing: {host or canonical}…"))
+        # Spawn background worker to fetch real title + uploader
+        cookies = load_settings().get("cookies_file", "")
+        worker = MetaFetchWorker(url=canonical, cookies_file=cookies, parent=self)
+
+        def _on_data(info: dict, r=row_idx) -> None:
+            title = info.get("title") or info.get("fulltitle") or ""
+            uploader = (
+                info.get("uploader") or info.get("channel")
+                or info.get("artist") or ""
+            )
+            if title:
+                self.model.update_task(r, title=title)
+            task = self.model.get_task(r)
+            if uploader and task and not task.get("host"):
+                self.model.update_task(r, host=uploader)
+
+        def _on_finished(success: bool, msg: str, r=row_idx, w=worker) -> None:
+            task = self.model.get_task(r)
+            short = (task or {}).get("title", canonical)[:50]
+            self.status_label.setText(
+                self.tr(f"Ready: {short}") if success
+                else self.tr(f"Added (unverified): {short}")
+            )
+            if w in self._info_workers:
+                self._info_workers.remove(w)
+
+        worker.data_ready.connect(_on_data)
+        worker.finished_signal.connect(_on_finished)
+        self._info_workers.append(worker)
+        worker.start()
 
     # ── Save Folder / Download Settings ───────────────────────────────────
 
@@ -400,6 +498,7 @@ class TaskDownloadInterface(QWidget):
         self.download_requested.emit(tasks_to_run)
 
     def _on_cancel(self) -> None:
+        # Update own UI immediately; parent handles manager cancellation
         self.start_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.setValue(0)
@@ -408,6 +507,7 @@ class TaskDownloadInterface(QWidget):
             self.tr("Cancelled"), self.tr("Download cancelled."),
             duration=INFOBAR_MS_WARNING, parent=self,
         )
+        self.cancel_requested.emit()
 
     # ── Public progress API ────────────────────────────────────────────────
 
@@ -491,20 +591,146 @@ class TaskDownloadInterface(QWidget):
 
     def _show_context_menu(self, pos) -> None:
         rows = self._selected_rows()
+        global_pos = self.task_table.viewport().mapToGlobal(pos)
+
         if not rows:
+            self._show_table_menu(global_pos)
             return
+
+        tasks = [self.model.get_task(i) for i in rows]
+        tasks = [t for t in tasks if t is not None]
+
+        has_pending   = any(t.get("status") == _STATUS_PENDING  for t in tasks)
+        has_retryable = any(t.get("status") in (_STATUS_ERROR, _STATUS_CANCELED) for t in tasks)
+        first_url     = next((t.get("url", "") for t in tasks if t.get("url")), "")
+        first_path    = next((t.get("path", "") for t in tasks if t.get("path")), "")
+
         menu = RoundMenu(parent=self)
-        menu.addAction(Action(FIF.DOWNLOAD, self.tr("Download Selected"),
-                              triggered=lambda: self._download_selected_rows(rows)))
+
+        menu.addAction(Action(
+            FIF.ADD, self.tr("Add Link"),
+            triggered=self._on_add_link,
+        ))
         menu.addSeparator()
-        menu.addAction(Action(FIF.REMOVE, self.tr("Remove"),
-                              triggered=lambda: self.model.remove_selected(rows)))
-        menu.exec(self.task_table.viewport().mapToGlobal(pos))
+
+        if has_pending:
+            menu.addAction(Action(
+                FIF.DOWNLOAD, self.tr("Download Selected"),
+                triggered=lambda: self._download_selected_rows(rows),
+            ))
+
+        if has_retryable:
+            menu.addAction(Action(
+                FIF.SYNC, self.tr("Retry"),
+                triggered=lambda: self._retry_rows(rows),
+            ))
+
+        if has_pending or has_retryable:
+            menu.addSeparator()
+
+        if first_url:
+            menu.addAction(Action(
+                FIF.COPY, self.tr("Copy URL"),
+                triggered=lambda: QApplication.clipboard().setText(first_url),
+            ))
+            if first_url.startswith(("http://", "https://")):
+                menu.addAction(Action(
+                    FIF.LINK, self.tr("Open in Browser"),
+                    triggered=lambda u=first_url: QDesktopServices.openUrl(QUrl(u)),
+                ))
+
+        if first_path:
+            folder = os.path.dirname(first_path) if os.path.isfile(first_path) else first_path
+            if os.path.isdir(folder):
+                menu.addAction(Action(
+                    FIF.FOLDER, self.tr("Open Folder"),
+                    triggered=lambda _, f=folder: QDesktopServices.openUrl(
+                        QUrl.fromLocalFile(f)
+                    ),
+                ))
+
+        menu.addSeparator()
+        menu.addAction(Action(
+            FIF.CHECKBOX, self.tr("Select All"),
+            triggered=self.task_table.selectAll,
+        ))
+        menu.addSeparator()
+        menu.addAction(Action(
+            FIF.REMOVE, self.tr("Remove Selected"),
+            triggered=lambda: self.model.remove_selected(rows),
+        ))
+
+        menu.exec(global_pos)
+
+    def _show_table_menu(self, global_pos) -> None:
+        """Context menu shown when right-clicking on empty table area (no row selected)."""
+        has_rows    = self.model.rowCount() > 0
+        has_pending = any(
+            (self.model.get_task(i) or {}).get("status") == _STATUS_PENDING
+            for i in range(self.model.rowCount())
+        )
+        has_retryable = any(
+            (self.model.get_task(i) or {}).get("status") in (_STATUS_ERROR, _STATUS_CANCELED)
+            for i in range(self.model.rowCount())
+        )
+        clipboard_url = QApplication.clipboard().text().strip()
+        clipboard_is_url = clipboard_url.startswith(("http://", "https://"))
+
+        menu = RoundMenu(parent=self)
+
+        menu.addAction(Action(
+            FIF.ADD, self.tr("Add Link"),
+            triggered=self._on_add_link,
+        ))
+        if clipboard_is_url:
+            menu.addAction(Action(
+                FIF.PASTE, self.tr("Paste from Clipboard"),
+                triggered=lambda: self._analyze_and_add_url(clipboard_url),
+            ))
+        menu.addSeparator()
+
+        if has_pending:
+            menu.addAction(Action(
+                FIF.DOWNLOAD, self.tr("Download All Pending"),
+                triggered=self._on_download_clicked,
+            ))
+
+        if has_retryable:
+            all_retryable = [
+                i for i in range(self.model.rowCount())
+                if (self.model.get_task(i) or {}).get("status") in (_STATUS_ERROR, _STATUS_CANCELED)
+            ]
+            menu.addAction(Action(
+                FIF.SYNC, self.tr("Retry All Failed"),
+                triggered=lambda rows=all_retryable: self.model.retry_rows(rows),
+            ))
+
+        if has_pending or has_retryable:
+            menu.addSeparator()
+
+        if has_rows:
+            menu.addAction(Action(
+                FIF.CHECKBOX, self.tr("Select All"),
+                triggered=self.task_table.selectAll,
+            ))
+            menu.addSeparator()
+            menu.addAction(Action(
+                FIF.DELETE, self.tr("Clear All"),
+                triggered=self._on_clear,
+            ))
+
+        if not menu.actions():
+            return
+
+        menu.exec(global_pos)
 
     def _download_selected_rows(self, rows: List[int]) -> None:
         tasks = [t for i in rows if (t := self.model.get_task(i)) is not None]
         if tasks:
             self.download_requested.emit(tasks)
+
+    def _retry_rows(self, rows: List[int]) -> None:
+        self.model.retry_rows(rows)
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -517,8 +743,47 @@ class TaskDownloadInterface(QWidget):
             if rows:
                 self.model.remove_selected(rows)
             event.accept()
+        elif event.key() == Qt.Key_V and event.modifiers() & Qt.ControlModifier:  # type: ignore
+            text = QApplication.clipboard().text().strip()
+            if text:
+                self._analyze_and_add_url(text)
+            event.accept()
         else:
             super().keyPressEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        for w in list(self._info_workers):
+            if w.isRunning():
+                w.quit()
+                w.wait(500)
+        self._info_workers.clear()
         super().closeEvent(event)
+
+
+# ── Add Link dialog ────────────────────────────────────────────────────────────
+
+class _AddLinkDialog(MessageBoxBase):
+    """Single-URL input dialog with auto-filled clipboard and Analyze & Add action."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.viewLayout.addWidget(BodyLabel(self.tr("Add Video URL"), self))
+
+        self._input = LineEdit(self)
+        self._input.setPlaceholderText(self.tr("https://youtube.com/watch?v=…"))
+        self._input.setFixedHeight(40)
+        self._input.setMinimumWidth(460)
+        self._input.setClearButtonEnabled(True)
+
+        # Pre-fill with clipboard if it looks like a URL
+        clip = QApplication.clipboard().text().strip()
+        if clip.startswith(("http://", "https://")):
+            self._input.setText(clip)
+
+        self.viewLayout.addWidget(self._input)
+        self.viewLayout.setSpacing(10)
+        self.yesButton.setText(self.tr("Analyze & Add"))
+        self.cancelButton.setText(self.tr("Cancel"))
+
+    def get_url(self) -> str:
+        return self._input.text().strip()

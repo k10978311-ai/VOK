@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from PyQt5.QtWidgets import QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 from qfluentwidgets import SegmentedWidget
 
-from app.common.database import sqlRequest, sqlSignalBus
 from app.common.database.entity import QueueTask
 from app.common.database.service import QueueTaskService
 from app.common.paths import get_default_downloads_dir
@@ -15,29 +14,12 @@ from app.common.signal_bus import signal_bus
 from app.common.sound import play_download_sound
 from app.common.state import add_log_entry
 from app.config.store import load_settings
+from app.core.download import check_unsupported_url, detect_platform, normalize_url
 from app.core.manager import DownloadJob, DownloadManager
+from app.ui.utils import format_size
 
 from .url_dowload_interface import UrlDownloadInterface
 from .task_dowload_interface import TaskDownloadInterface
-
-# Format key → short extension label shown in the table before the file is done
-_FORMAT_EXT: dict[str, str] = {
-    "Best (video+audio)": "mp4",
-    "HD 1080p":           "mp4",
-    "HD 720p":            "mp4",
-    "4K / 2160p":        "mp4",
-    "Best video":        "mp4",
-    "Best audio":        "mp3",
-    "Video (mp4)":       "mp4",
-    "Audio (mp3)":       "mp3",
-    "Photo / Image":     "jpg",
-}
-
-
-def _fmt_ext(format_key: str) -> str:
-    """Return a short extension label for a format key (e.g. 'mp4', 'mp3')."""
-    return _FORMAT_EXT.get(format_key, format_key)
-
 
 class HomeInterface(QWidget):
     """Tabbed download home: URL Download (enter URL) | Tasks (table)."""
@@ -86,7 +68,7 @@ class HomeInterface(QWidget):
         self.task_interface.download_requested.connect(self._on_tasks_download_requested)
 
         # Tasks tab cancel button → cancel all running jobs
-        self.task_interface.cancel_button.clicked.connect(self._on_cancel_all)
+        self.task_interface.cancel_requested.connect(self._on_cancel_all)
 
         # Intercept row removal to keep DB in sync
         self.task_interface.model.rowsAboutToBeRemoved.connect(self._on_rows_about_to_be_removed)
@@ -98,6 +80,19 @@ class HomeInterface(QWidget):
 
         # Restore incomplete tasks from previous session
         self._restore_queue()
+
+    # ── Helpers ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_host(url: str) -> str:
+        """Return a clean platform/host name for a URL."""
+        platform = detect_platform(url)
+        if platform and platform != "Unknown":
+            return platform
+        try:
+            return urlparse(url).netloc.replace("www.", "")
+        except Exception:
+            return ""
 
     # ── Tab helpers ───────────────────────────────────────────────────────
 
@@ -167,11 +162,12 @@ class HomeInterface(QWidget):
         svc = self._get_queue_service()
         if not svc:
             return
+        fmt = load_settings().get("download_format", "Best (video+audio)")
         qt = QueueTask(
             url=task.get("url", ""),
             title=task.get("title", ""),
             host=task.get("host", ""),
-            format_key=task.get("format", "Best (video+audio)"),
+            format_key=fmt,
             output_dir=task.get("path", ""),
             cookies_file=task.get("cookies_file", ""),
             status="Pending",
@@ -217,22 +213,23 @@ class HomeInterface(QWidget):
 
     def _on_url_submitted(self, url_or_path: str) -> None:
         """Single URL or file path from URL tab → add to task table, switch."""
-        from app.config.store import load_settings
-        from app.common.paths import get_default_downloads_dir
         s = load_settings()
-        fmt  = s.get("download_format", "Best (video+audio)")
         save = s.get("download_path", str(get_default_downloads_dir()))
         host = ""
         if url_or_path.startswith(("http://", "https://")):
-            try:
-                host = urlparse(url_or_path).netloc.replace("www.", "")
-            except Exception:
-                pass
+            # fast-fail known-unsupported patterns
+            errmsg = check_unsupported_url(url_or_path)
+            if errmsg:
+                from qfluentwidgets import InfoBar
+                InfoBar.warning("Unsupported URL", errmsg, duration=5000, parent=self)
+                return
+            # normalise embed/modal URLs before storing
+            url_or_path, _note = normalize_url(url_or_path)
+            host = self._resolve_host(url_or_path)
         task_dict = {
             "title":  url_or_path,
             "url":    url_or_path,
             "host":   host,
-            "format": _fmt_ext(fmt),
             "path":   url_or_path if os.path.isfile(url_or_path) else save,
         }
         self.task_interface.set_task(task_dict)
@@ -242,35 +239,27 @@ class HomeInterface(QWidget):
 
     def _on_bulk_submitted(self, items: list) -> None:
         """Multiple URLs/entry-dicts from URL tab → add all to task table, switch."""
-        from app.config.store import load_settings
-        from app.common.paths import get_default_downloads_dir
         s = load_settings()
-        fmt  = s.get("download_format", "Best (video+audio)")
         save = s.get("download_path", str(get_default_downloads_dir()))
         for item in items:
             if isinstance(item, dict):
-                url  = item.get("url", "")
+                url   = item.get("url", "")
                 title = item.get("title") or url
                 host  = item.get("host", "")
-                if not host and url.startswith(("http://", "https://")):
-                    try:
-                        host = urlparse(url).netloc.replace("www.", "")
-                    except Exception:
-                        pass
             else:
                 url = item
                 title = url
                 host = ""
-                if url.startswith(("http://", "https://")):
-                    try:
-                        host = urlparse(url).netloc.replace("www.", "")
-                    except Exception:
-                        pass
+            if url.startswith(("http://", "https://")):
+                if check_unsupported_url(url):
+                    continue  # silently skip; URL tab already warned on individual adds
+                url, _ = normalize_url(url)
+                if not host:
+                    host = self._resolve_host(url)
             task_dict = {
                 "title":  title,
                 "url":    url,
                 "host":   host,
-                "format": _fmt_ext(fmt),
                 "path":   save,
             }
             self.task_interface.set_task(task_dict)
@@ -289,6 +278,7 @@ class HomeInterface(QWidget):
         self._manager.set_max_workers(int(s.get("concurrent_downloads", 2)))
         self._manager.set_concurrent_fragments(int(s.get("concurrent_fragments", 4)))
 
+        enqueued = 0
         for task in tasks:
             # Use stored url field; fall back to title (for manually-typed tasks)
             url = task.get("url") or task.get("title", "")
@@ -326,18 +316,24 @@ class HomeInterface(QWidget):
                 self._db_update_status(row_idx, "Downloading", job_id=job.job_id)
 
             self._manager.enqueue(job)
+            enqueued += 1
+
+        if enqueued:
+            self.task_interface.set_progress(
+                0, self.tr(f"Queued {enqueued} job(s) — downloading…")
+            )
 
     def _on_cancel_all(self) -> None:
-        """Cancel all running jobs and mark their DB rows as Canceled."""
+        """Cancel all running jobs, mark rows as Canceled, and reset UI."""
         for job_id, row in list(self._job_to_row.items()):
             self._db_update_status(row, "Canceled")
+            self.task_interface.update_task_progress(row, 0, status="Canceled")
+        self._job_to_row.clear()
+        self._active_jobs.clear()
+        self._job_errors.clear()
         self._manager.cancel_all()
 
     def _on_download_progress(self, job_id: str, value: float) -> None:
-        row = self._job_to_row.get(job_id)
-        if row is not None:
-            pct = int(max(0.0, min(1.0, value)) * 100)
-            self.task_interface.update_task_progress(row, pct, status="Downloading")
         signal_bus.download_progress.emit(job_id, max(0.0, min(1.0, value)))
 
     def _on_download_progress_detail(
@@ -346,10 +342,21 @@ class HomeInterface(QWidget):
         signal_bus.download_progress_detail.emit(job_id, pct, speed, eta, cur, tot)
         row = self._job_to_row.get(job_id)
         if row is not None:
-            # Show total size if known; fall back to downloaded bytes when total is unavailable
             size_str = tot if (tot and tot != "?") else cur
+            progress_pct = int(max(0.0, min(1.0, pct)) * 100)
             self.task_interface.update_task_progress(
-                row, int(max(0.0, min(1.0, pct)) * 100), status="Downloading", size=size_str
+                row, progress_pct, status="Downloading", size=size_str
+            )
+        # Update overall progress bar = average of all active rows
+        if self._job_to_row:
+            avg_pct = sum(
+                (self.task_interface.model.get_task(r) or {}).get("progress", 0)
+                for r in self._job_to_row.values()
+            ) // max(1, len(self._job_to_row))
+            active = len(self._active_jobs)
+            self.task_interface.set_progress(
+                avg_pct,
+                f"{speed}  ETA {eta}  ({active} active)",
             )
 
     def _on_download_job_finished(
@@ -368,7 +375,7 @@ class HomeInterface(QWidget):
         signal_bus.download_finished.emit(job_id, success, message, filepath, size_bytes)
 
         if row is not None:
-            final_size = _fmt_bytes(size_bytes) if size_bytes > 0 else ""
+            final_size = format_size(size_bytes) if size_bytes > 0 else ""
             final_status = "Done" if success else "Error"
             self.task_interface.update_task_progress(
                 row,
@@ -376,11 +383,6 @@ class HomeInterface(QWidget):
                 status=final_status,
                 size=final_size,
             )
-            # Update Format column with the real extension from the saved file
-            if filepath:
-                ext = os.path.splitext(filepath)[1].lstrip(".")
-                if ext:
-                    self.task_interface.model.update_task(row, format=ext.lower())
             self._db_update_status(row, final_status)
 
         if not success:

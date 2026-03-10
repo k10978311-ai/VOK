@@ -8,13 +8,11 @@ from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt
 COL_IDX      = 0
 COL_TITLE    = 1
 COL_HOST     = 2
-COL_FORMAT   = 3
-COL_STATUS   = 4
-COL_SIZE     = 5
-COL_PROGRESS = 6
-COL_PATH     = 7
+COL_STATUS   = 3
+COL_SIZE     = 4
+COL_PROGRESS = 5
 
-_COL_HEADERS = ["#", "Title", "Host", "Format", "Status", "Size", "Progress %", "Save Path"]
+_COL_HEADERS = ["#", "Title", "Host", "Status", "Size", "Progress %"]
 
 _STATUS_PENDING  = "Pending"
 _STATUS_RUNNING  = "Downloading"
@@ -44,6 +42,11 @@ class DownloadTaskModel(QAbstractTableModel):
         row = self._rows[index.row()]
         col = index.column()
 
+        if role == Qt.DecorationRole:  # type: ignore
+            if col == COL_HOST:
+                from app.ui.helpers.downloader import host_icon
+                return host_icon(row.get("host", ""))
+
         if role == Qt.DisplayRole:  # type: ignore
             if col == COL_IDX:
                 return str(index.row() + 1)
@@ -51,8 +54,6 @@ class DownloadTaskModel(QAbstractTableModel):
                 return row.get("title", "")
             if col == COL_HOST:
                 return row.get("host", "")
-            if col == COL_FORMAT:
-                return row.get("format", "")
             if col == COL_STATUS:
                 return row.get("status", _STATUS_PENDING)
             if col == COL_SIZE:
@@ -60,11 +61,9 @@ class DownloadTaskModel(QAbstractTableModel):
             if col == COL_PROGRESS:
                 p = row.get("progress", 0)
                 return f"{p}%" if isinstance(p, int) else "—"
-            if col == COL_PATH:
-                return row.get("path", "")
 
         if role == Qt.TextAlignmentRole:  # type: ignore
-            if col in (COL_IDX, COL_STATUS, COL_SIZE, COL_PROGRESS):
+            if col in (COL_IDX, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS):
                 return Qt.AlignCenter  # type: ignore
         return None
 
@@ -110,7 +109,7 @@ class DownloadTaskModel(QAbstractTableModel):
             self.dataChanged.emit(
                 self.index(row_idx, 0),
                 self.index(row_idx, len(_COL_HEADERS) - 1),
-                [Qt.DisplayRole],  # type: ignore
+                [Qt.DisplayRole, Qt.DecorationRole],  # type: ignore
             )
 
     def remove_selected(self, rows: List[int]) -> None:
@@ -119,6 +118,21 @@ class DownloadTaskModel(QAbstractTableModel):
                 self.beginRemoveRows(QModelIndex(), row_idx, row_idx)
                 self._rows.pop(row_idx)
                 self.endRemoveRows()
+
+    def retry_rows(self, rows: List[int]) -> None:
+        """Reset Error/Canceled rows back to Pending so they can be re-queued."""
+        for row_idx in rows:
+            if 0 <= row_idx < len(self._rows):
+                row = self._rows[row_idx]
+                if row.get("status") in (_STATUS_ERROR, _STATUS_CANCELED):
+                    row["status"] = _STATUS_PENDING
+                    row["progress"] = 0
+                    row["size"] = "—"
+                    self.dataChanged.emit(
+                        self.index(row_idx, 0),
+                        self.index(row_idx, len(_COL_HEADERS) - 1),
+                        [Qt.DisplayRole],  # type: ignore
+                    )
 
     def clear(self) -> None:
         self.beginResetModel()
@@ -129,3 +143,10 @@ class DownloadTaskModel(QAbstractTableModel):
         if 0 <= row_idx < len(self._rows):
             return self._rows[row_idx]
         return None
+
+    def find_url(self, url: str) -> int:
+        """Return the row index of the first task with this URL, or -1 if not found."""
+        for i, row in enumerate(self._rows):
+            if row.get("url") == url:
+                return i
+        return -1
