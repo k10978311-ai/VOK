@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-macos-14-arm:
-    runs-on: macos-14
+  build-macos:
+    runs-on: macos-15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
           while [ $attempt -lt $max_attempts ]; do
               hdiutil create -srcfolder "dist/" -volname "VOK" -fs HFS+ \
                   -fsargs "-c c=64,a=16,e=16" -format UDZO -size 400m \
-                  "VOK-v${{ env.VERSION }}-macOS-arm64.dmg" && break
+                  "VOK-v${{ env.VERSION }}-macOS-AppleSilicon.dmg" && break
 
               attempt=$((attempt + 1))
               echo "Attempt $attempt failed, retrying..."
@@ -52,6 +52,6 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VOK-v${{ env.VERSION }}-macOS-arm64
-          path: VOK-v${{ env.VERSION }}-macOS-arm64.dmg
+          name: VOK-v${{ env.VERSION }}-macOS-AppleSilicon
+          path: VOK-v${{ env.VERSION }}-macOS-AppleSilicon.dmg
 
