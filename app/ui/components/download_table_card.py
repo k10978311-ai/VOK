@@ -29,18 +29,19 @@ class DownloadTableCard(CardWidget):
         layout.addLayout(hdr)
 
         self.table = TableWidget(self)
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
-            ["Time", "Host", "Status", "Message", "Path", "Size", "Progress"]
+            ["Time", "Host", "Status", "Format", "Message", "Path", "Size", "Progress"]
         )
         hdr_view = self.table.horizontalHeader()
         hdr_view.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         hdr_view.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         hdr_view.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(3, QHeaderView.Stretch)
+        hdr_view.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         hdr_view.setSectionResizeMode(4, QHeaderView.Stretch)
-        hdr_view.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        hdr_view.setSectionResizeMode(6, QHeaderView.Stretch)
+        hdr_view.setSectionResizeMode(5, QHeaderView.Stretch)
+        hdr_view.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        hdr_view.setSectionResizeMode(7, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setAlternatingRowColors(True)

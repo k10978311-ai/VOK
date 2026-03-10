@@ -68,6 +68,25 @@ PROGRESS_THROTTLE_MS = 120
 # Skip per-row log text updates when job count exceeds this (avoids UI flood)
 LOG_TABLE_UPDATE_MAX_JOBS = 80
 
+# Format key → short extension label (shown before the file is done)
+_FMT_EXT: dict[str, str] = {
+    "Best (video+audio)": "mp4",
+    "HD 1080p":           "mp4",
+    "HD 720p":            "mp4",
+    "4K / 2160p":        "mp4",
+    "Best video":        "mp4",
+    "Best audio":        "mp3",
+    "Video (mp4)":       "mp4",
+    "Audio (mp3)":       "mp3",
+    "Photo / Image":     "jpg",
+}
+
+
+def _fmt_ext(format_key: str) -> str:
+    """Return a short extension label for a format key (e.g. 'mp4', 'mp3')."""
+    return _FMT_EXT.get(format_key, format_key)
+
+
 def _sanitize_folder_name(name: str) -> str:
     """Replace path-unsafe chars so the name can be used as a folder name."""
     s = re.sub(r'[<>:"/\\|?*]', "_", name)
@@ -415,7 +434,7 @@ class DownloaderView(QFrame):
         for job, entry in jobs_and_entries:
             self._active_jobs.add(job.job_id)
         rows_data = [
-            (j.job_id, entry.get("title", j.url), out, entry.get("url", ""))
+            (j.job_id, entry.get("title", j.url), out, entry.get("url", ""), fmt)
             for j, entry in jobs_and_entries
         ]
         self._add_download_rows_batch(rows_data)
@@ -475,7 +494,7 @@ class DownloaderView(QFrame):
         for job, _ in jobs_and_entries:
             self._active_jobs.add(job.job_id)
         rows_data = [
-            (j.job_id, entry.get("title", j.url), output_dir, entry.get("url", ""))
+            (j.job_id, entry.get("title", j.url), output_dir, entry.get("url", ""), format_key)
             for j, entry in jobs_and_entries
         ]
         self._add_download_rows_batch(rows_data)
@@ -509,7 +528,8 @@ class DownloaderView(QFrame):
         self._update_controls()
 
     def _add_download_row(
-        self, job_id: str, message: str, output_dir: str = "", url: str = "", scroll: bool = True
+        self, job_id: str, message: str, output_dir: str = "", url: str = "",
+        format_key: str = "", scroll: bool = True
     ) -> None:
         """Add a row for a new download job with a progress bar. Path shows output_dir until finished."""
         row = self._process_table.rowCount()
@@ -524,16 +544,17 @@ class DownloaderView(QFrame):
         host_item.setToolTip(platform)
         self._process_table.setItem(row, 1, host_item)
         self._process_table.setItem(row, 2, QTableWidgetItem("Downloading"))
-        self._process_table.setItem(row, 3, QTableWidgetItem(message[:200] or job_id[:200]))
-        self._process_table.setItem(row, 4, QTableWidgetItem(output_dir or "—"))
-        self._process_table.setItem(row, 5, QTableWidgetItem("—"))
+        self._process_table.setItem(row, 3, QTableWidgetItem(_fmt_ext(format_key)))
+        self._process_table.setItem(row, 4, QTableWidgetItem(message[:200] or job_id[:200]))
+        self._process_table.setItem(row, 5, QTableWidgetItem(output_dir or "—"))
+        self._process_table.setItem(row, 6, QTableWidgetItem("—"))
         bar = ProgressBar(self._process_table)
         bar.setRange(0, 100)
         bar.setValue(0)
         bar.setFixedHeight(20)
         bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         bar.setMinimumWidth(80)
-        self._process_table.setCellWidget(row, 6, bar)
+        self._process_table.setCellWidget(row, 7, bar)
         self._job_to_row[job_id] = row
         self._job_progress[job_id] = 0.0
         signal_bus.download_started.emit(job_id, url or message, output_dir or "")
@@ -541,15 +562,15 @@ class DownloaderView(QFrame):
             self._process_table.scrollToBottom()
 
     def _add_download_rows_batch(
-        self, rows_data: list[tuple[str, str, str, str]]
+        self, rows_data: list[tuple[str, str, str, str, str]]
     ) -> None:
-        """Add many download rows in one go without repainting each time. Each item: (job_id, message, output_dir, url)."""
+        """Add many download rows in one go without repainting each time. Each item: (job_id, message, output_dir, url, format_key)."""
         if not rows_data:
             return
         self._process_table.setUpdatesEnabled(False)
         try:
-            for job_id, message, output_dir, url in rows_data:
-                self._add_download_row(job_id, message, output_dir, url, scroll=False)
+            for job_id, message, output_dir, url, fmt_key in rows_data:
+                self._add_download_row(job_id, message, output_dir, url, fmt_key, scroll=False)
             self._process_table.scrollToBottom()
         finally:
             self._process_table.setUpdatesEnabled(True)
@@ -567,7 +588,7 @@ class DownloaderView(QFrame):
         job_id = item0.data(Qt.UserRole) if item0 else None
         if not job_id:
             return
-        path_item = self._process_table.item(row, 4)
+        path_item = self._process_table.item(row, 5)
         path = (path_item.text() or "").strip().replace("—", "").strip() or None
         is_active = job_id in self._active_jobs
 
@@ -653,12 +674,12 @@ class DownloaderView(QFrame):
         if len(self._active_jobs) <= LOG_TABLE_UPDATE_MAX_JOBS:
             row = self._job_to_row.get(job_id)
             if row is not None and row < self._process_table.rowCount():
-                msg_item = self._process_table.item(row, 3)
+                msg_item = self._process_table.item(row, 4)
                 if msg_item:
                     msg_item.setText(clean[:500] if len(clean) > 500 else clean)
 
     def _progress_col(self) -> int:
-        return 6
+        return 7
 
     def _log_append(self, text: str) -> None:
         """Append a generic log line (e.g. from playlist preview); no job row."""
@@ -769,7 +790,7 @@ class DownloaderView(QFrame):
             )
             self._enhance_job_options[job.job_id] = opts
             self._active_jobs.add(job.job_id)
-            self._add_download_row(job.job_id, url, out, url=job.url)
+            self._add_download_row(job.job_id, url, out, url=job.url, format_key=fmt)
             self._manager.enqueue(job)
             self._tooltip_total = 1
             self._tooltip_done = 0
@@ -794,7 +815,7 @@ class DownloaderView(QFrame):
                 (DownloadJob(url=url, output_dir=out, format_key=fmt, single_video=True, cookies_file=cookies), url)
                 for url in urls
             ]
-            rows_data = [(j.job_id, url, out, url) for j, url in jobs_and_urls]
+            rows_data = [(j.job_id, url, out, url, fmt) for j, url in jobs_and_urls]
             for j, _ in jobs_and_urls:
                 self._active_jobs.add(j.job_id)
             self._add_download_rows_batch(rows_data)
@@ -824,7 +845,7 @@ class DownloaderView(QFrame):
                     cookies_file=cookies,
                 )
                 self._active_jobs.add(job.job_id)
-                self._add_download_row(job.job_id, url, out, url=job.url)
+                self._add_download_row(job.job_id, url, out, url=job.url, format_key=fmt)
                 self._manager.enqueue(job)
                 self._tooltip_total = 1
                 self._tooltip_done = 0
@@ -936,13 +957,18 @@ class DownloaderView(QFrame):
             status_item = self._process_table.item(row, 2)
             if status_item:
                 status_item.setText("Done" if success else "Skipped")
-            msg_item = self._process_table.item(row, 3)
+            msg_item = self._process_table.item(row, 4)
             if msg_item:
                 msg_item.setText(message[:500] if len(message) > 500 else message)
-            path_item = self._process_table.item(row, 4)
+            path_item = self._process_table.item(row, 5)
             if path_item and output_path:
                 path_item.setText(output_path)
-            size_item = self._process_table.item(row, 5)
+                ext = os.path.splitext(output_path)[1].lstrip(".")
+                if ext:
+                    fmt_item = self._process_table.item(row, 3)
+                    if fmt_item:
+                        fmt_item.setText(ext.lower())
+            size_item = self._process_table.item(row, 6)
             if size_item:
                 size_item.setText(format_size(size_bytes) if size_bytes >= 0 else "—")
             bar = self._process_table.cellWidget(row, self._progress_col())
@@ -1037,13 +1063,18 @@ class DownloaderView(QFrame):
             status_item = self._process_table.item(row, 2)
             if status_item:
                 status_item.setText("Done" if success else "Skipped")
-            msg_item = self._process_table.item(row, 3)
+            msg_item = self._process_table.item(row, 4)
             if msg_item:
                 msg_item.setText(message[:500] if len(message) > 500 else message)
-            path_item = self._process_table.item(row, 4)
+            path_item = self._process_table.item(row, 5)
             if path_item and filepath:
                 path_item.setText(filepath)
-            size_item = self._process_table.item(row, 5)
+                ext = os.path.splitext(filepath)[1].lstrip(".")
+                if ext:
+                    fmt_item = self._process_table.item(row, 3)
+                    if fmt_item:
+                        fmt_item.setText(ext.lower())
+            size_item = self._process_table.item(row, 6)
             if size_item:
                 size_item.setText(format_size(size_bytes))
             bar = self._process_table.cellWidget(row, self._progress_col())
