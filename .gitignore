@@ -33,6 +33,7 @@ dist/
 *.pyz
 *.pyd
 *.pyw
+*.log
 
 downloads
 

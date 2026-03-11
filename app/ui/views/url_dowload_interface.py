@@ -1,48 +1,37 @@
 """URL Download Interface: centered URL/file input, drag-and-drop, progress."""
 
-import os
-from urllib.parse import urlparse
+from pathlib import Path
 
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPixmap
-from PyQt5.QtWidgets import (
-    QApplication,
-    QHBoxLayout,
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-)
+from PyQt5.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import (
     BodyLabel,
     FluentIcon,
     IndeterminateProgressBar,
-    InfoBar,
     LineEdit,
-    MessageBoxBase,
-    PlainTextEdit,
     ProgressBar,
     ToolButton,
     themeColor,
 )
 
 from app.common.concurrent import PlaylistFetchWorker
-from app.common.paths import PROJECT_ROOT
+from app.common.paths import RESOURCES_DIR
+from app.config.store import load_settings
 from app.core.download import detect_collection_url
+from app.core.task_queue import (
+    SUPPORTED_EXTENSIONS,
+    is_http_url,
+    build_playlist_task_entries,
+)
+from app.ui.dialogs import BulkUrlDialog
 
-LOGO_PATH = PROJECT_ROOT / "resources" / "logo.png"
+LOGO_PATH = RESOURCES_DIR / "logo.png"
 
 INFOBAR_MS_SUCCESS = 3000
 INFOBAR_MS_ERROR = 5000
 INFOBAR_MS_WARNING = 4000
 INFOBAR_MS_INFO = 3000
-
-VIDEO_EXTENSIONS = {
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpeg", "mpg",
-}
-AUDIO_EXTENSIONS = {
-    "mp3", "aac", "wav", "flac", "ogg", "m4a", "opus", "wma",
-}
-SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 
 class UrlDownloadInterface(QWidget):
@@ -50,6 +39,7 @@ class UrlDownloadInterface(QWidget):
 
     finished = pyqtSignal(str)          # single URL / file path
     bulk_finished = pyqtSignal(list)    # list[str] of validated URLs
+    message_requested = pyqtSignal(str, str, str, int, object)  # level, title, message, duration, position
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -201,23 +191,21 @@ class UrlDownloadInterface(QWidget):
             self._url_input.setText(text)
 
     def _on_bulk_clicked(self):
-        dialog = _BulkUrlDialog(self)
+        dialog = BulkUrlDialog(self)
         if dialog.exec_():
             urls = dialog.get_urls()
             if urls:
                 self.bulk_finished.emit(urls)
-                InfoBar.success(
-                    self.tr("Bulk queued"),
+                self._emit_message(
+                    "success", self.tr("Bulk queued"),
                     self.tr(f"{len(urls)} URL(s) sent to download queue."),
-                    duration=INFOBAR_MS_SUCCESS,
-                    parent=self,
+                    INFOBAR_MS_SUCCESS,
                 )
             else:
-                InfoBar.warning(
-                    self.tr("No valid URLs"),
+                self._emit_message(
+                    "warning", self.tr("No valid URLs"),
                     self.tr("Please enter at least one valid http/https URL."),
-                    duration=INFOBAR_MS_WARNING,
-                    parent=self,
+                    INFOBAR_MS_WARNING,
                 )
 
     def _on_action_clicked(self):
@@ -226,35 +214,41 @@ class UrlDownloadInterface(QWidget):
     def _submit(self):
         text = self._url_input.text().strip()
         if not text:
-            InfoBar.warning(
-                self.tr("Empty input"),
+            self._emit_message(
+                "warning", self.tr("Empty input"),
                 self.tr("Please enter a URL or drop a media file first."),
-                duration=INFOBAR_MS_WARNING,
-                parent=self,
+                INFOBAR_MS_WARNING,
             )
             return
-        if os.path.isfile(text):
+        path = Path(text)
+        if path.is_file():
             self.finished.emit(text)
-        elif self._is_valid_url(text):
+        elif is_http_url(text):
             if detect_collection_url(text):
                 self._start_extraction(text)
             else:
                 self.finished.emit(text)
-                InfoBar.success(
-                    self.tr("Queued"),
-                    self.tr("URL sent to download queue."),
-                    duration=INFOBAR_MS_SUCCESS,
-                    parent=self,
+                self._emit_message(
+                    "success", self.tr("Queued"),
+                    self.tr("URL sent to download queue."), INFOBAR_MS_SUCCESS,
                 )
         else:
-            InfoBar.error(
-                self.tr("Invalid input"),
-                self.tr("Enter a valid file path or video URL."),
-                duration=INFOBAR_MS_ERROR,
-                parent=self,
+            self._emit_message(
+                "error", self.tr("Invalid input"),
+                self.tr("Enter a valid file path or video URL."), INFOBAR_MS_ERROR,
             )
 
     # ── Playlist / channel / profile extraction ───────────────────────────
+
+    def _emit_message(self, level: str, title: str, message: str, duration: int, position=None) -> None:
+        self.message_requested.emit(level, title, message, duration, position)
+
+    def _reset_extraction_ui(self) -> None:
+        """Hide progress, cancel button; re-enable action button."""
+        self._fetch_progress.stop()
+        self._fetch_progress.hide()
+        self._cancel_fetch_btn.hide()
+        self._action_btn.setEnabled(True)
 
     def _start_extraction(self, url: str) -> None:
         """Start PlaylistFetchWorker to extract all video entries from a collection URL."""
@@ -263,7 +257,6 @@ class UrlDownloadInterface(QWidget):
             self._fetch_worker.cancel()
             self._fetch_worker.wait()
 
-        from app.config.store import load_settings
         cookies = load_settings().get("cookies_file", "")
 
         self._fetch_worker = PlaylistFetchWorker(url=url, cookies_file=cookies, parent=self)
@@ -282,65 +275,36 @@ class UrlDownloadInterface(QWidget):
 
         self._fetch_worker.start()
 
-        InfoBar.info(
+        self.message_requested.emit(
+            "info",
             self.tr("Extracting"),
             self.tr("Fetching video list from collection URL…"),
-            duration=INFOBAR_MS_INFO,
-            parent=self,
+            INFOBAR_MS_INFO,
+            None,
         )
 
     def _on_entries_ready(self, entries: list) -> None:
-        """Called when PlaylistFetchWorker emits entries_ready."""
-        # Emit full entry dicts so the task table can show title, host, etc.
-        tasks = [
-            {
-                "title": e.get("title") or e.get("url", ""),
-                "host":  e.get("uploader") or "",
-                "url":   e.get("url", ""),
-            }
-            for e in entries if e.get("url")
-        ]
+        tasks = build_playlist_task_entries(entries)
         if tasks:
             self.bulk_finished.emit(tasks)
 
     def _on_extraction_finished(self, success: bool, message: str) -> None:
-        """Called when PlaylistFetchWorker finishes (success or error)."""
-        self._fetch_progress.stop()
-        self._fetch_progress.hide()
-        self._cancel_fetch_btn.hide()
-        self._action_btn.setEnabled(True)
-
+        self._reset_extraction_ui()
         if success:
             self._status_label.setText(message)
-            InfoBar.success(
-                self.tr("Extraction complete"),
-                message,
-                duration=INFOBAR_MS_SUCCESS,
-                parent=self,
-            )
+            self._emit_message("success", self.tr("Extraction complete"), message, INFOBAR_MS_SUCCESS)
         else:
             self._status_label.setText(self.tr("Extraction failed"))
-            InfoBar.error(
-                self.tr("Extraction failed"),
-                message,
-                duration=INFOBAR_MS_ERROR,
-                parent=self,
-            )
+            self._emit_message("error", self.tr("Extraction failed"), message, INFOBAR_MS_ERROR)
 
     def _cancel_extraction(self) -> None:
-        """Cancel an in-progress playlist/channel extraction."""
         if self._fetch_worker and self._fetch_worker.isRunning():
             self._fetch_worker.cancel()
-        self._fetch_progress.stop()
-        self._fetch_progress.hide()
-        self._cancel_fetch_btn.hide()
-        self._action_btn.setEnabled(True)
+        self._reset_extraction_ui()
         self._status_label.setText(self.tr("Extraction cancelled"))
-        InfoBar.warning(
-            self.tr("Cancelled"),
-            self.tr("Playlist extraction was cancelled."),
-            duration=INFOBAR_MS_WARNING,
-            parent=self,
+        self._emit_message(
+            "warning", self.tr("Cancelled"),
+            self.tr("Playlist extraction was cancelled."), INFOBAR_MS_WARNING,
         )
 
     # ── Drag & drop ───────────────────────────────────────────────────────
@@ -350,24 +314,20 @@ class UrlDownloadInterface(QWidget):
 
     def dropEvent(self, event):
         for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if not os.path.isfile(path):
+            path_str = url.toLocalFile()
+            if not path_str:
                 continue
-            ext = os.path.splitext(path)[1][1:].lower()
+            path = Path(path_str)
+            if not path.is_file():
+                continue
+            ext = path.suffix.lstrip(".").lower()
             if ext in SUPPORTED_EXTENSIONS:
-                self._url_input.setText(path)
-                InfoBar.success(
-                    self.tr("File imported"),
-                    path,
-                    duration=INFOBAR_MS_SUCCESS,
-                    parent=self,
-                )
+                self._url_input.setText(path_str)
+                self._emit_message("success", self.tr("File imported"), path_str, INFOBAR_MS_SUCCESS)
             else:
-                InfoBar.error(
-                    self.tr(f"Unsupported format: .{ext}"),
-                    self.tr("Drop a video or audio file."),
-                    duration=INFOBAR_MS_ERROR,
-                    parent=self,
+                self._emit_message(
+                    "error", self.tr(f"Unsupported format: .{ext}"),
+                    self.tr("Drop a video or audio file."), INFOBAR_MS_ERROR,
                 )
             break
 
@@ -387,64 +347,8 @@ class UrlDownloadInterface(QWidget):
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _is_valid_url(url: str) -> bool:
-        try:
-            r = urlparse(url)
-            return r.scheme in ("http", "https") and bool(r.netloc)
-        except ValueError:
-            return False
-
     def get_url(self) -> str:
         return self._url_input.text().strip()
 
     def set_url(self, text: str):
         self._url_input.setText(text)
-
-
-# ── Bulk URL dialog ────────────────────────────────────────────────────────────
-
-class _BulkUrlDialog(MessageBoxBase):
-    """Dialog for entering multiple URLs — one per line."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._setup_ui()
-        self.yesButton.setText(self.tr("Queue all"))
-        self.cancelButton.setText(self.tr("Cancel"))
-
-    def _setup_ui(self) -> None:
-        self.viewLayout.addWidget(BodyLabel(self.tr("Bulk URL Download"), self))
-
-        self._text_edit = PlainTextEdit(self)
-        self._text_edit.setPlaceholderText(
-            self.tr(
-                "Paste one URL per line:\n\n"
-                "https://youtube.com/watch?v=…\n"
-                "https://tiktok.com/@user/video/…\n"
-                "https://instagram.com/p/…\n\n"
-                "Blank lines and duplicates are ignored automatically."
-            )
-        )
-        self._text_edit.setMinimumWidth(480)
-        self._text_edit.setMinimumHeight(320)
-
-        self.viewLayout.addWidget(self._text_edit)
-        self.viewLayout.setSpacing(10)
-
-    def get_urls(self) -> list[str]:
-        """Return deduplicated, validated http/https URLs from the text box."""
-        seen: set[str] = set()
-        result: list[str] = []
-        for line in self._text_edit.toPlainText().splitlines():
-            url = line.strip()
-            if not url or url in seen:
-                continue
-            try:
-                r = urlparse(url)
-                if r.scheme in ("http", "https") and r.netloc:
-                    seen.add(url)
-                    result.append(url)
-            except ValueError:
-                pass
-        return result

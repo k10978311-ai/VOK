@@ -73,6 +73,30 @@ class MetaFetchWorker(QThread):
 
 
 # ---------------------------------------------------------------------------
+# HostIconFetchWorker
+# ---------------------------------------------------------------------------
+
+class HostIconFetchWorker(QThread):
+    """Fetch host/favicon for a URL and store in cache (so host_icon can show it)."""
+
+    icon_fetched = pyqtSignal(str)  # url when done (cache populated or default used)
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self.url = (url or "").strip()
+
+    def run(self) -> None:
+        if not self.url or not self.url.startswith(("http://", "https://")):
+            return
+        try:
+            from app.core.extract_host import get_icon_path_for_url
+            get_icon_path_for_url(self.url, use_google_fallback=True)
+            self.icon_fetched.emit(self.url)
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # CommentsWorker
 # ---------------------------------------------------------------------------
 

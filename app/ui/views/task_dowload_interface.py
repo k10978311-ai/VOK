@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt5.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent, QKeyEvent
 from PyQt5.QtWidgets import (
     QAbstractItemView,
@@ -14,15 +14,10 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtCore import QUrl
 from qfluentwidgets import (
     Action,
-    BodyLabel,
     CommandBar,
-    InfoBar,
-    InfoBarPosition,
-    LineEdit,
-    MessageBoxBase,
+    BodyLabel,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
@@ -30,29 +25,40 @@ from qfluentwidgets import (
     TableView,
 )
 from qfluentwidgets import FluentIcon as FIF
+from qfluentwidgets import InfoBarPosition
 
-from app.common.concurrent import MetaFetchWorker
-from app.config.store import load_settings
-from app.core.download import check_unsupported_url, detect_platform, normalize_url
+from app.common.concurrent import MetaFetchWorker, HostIconFetchWorker
+from app.config.store import load_settings, save_settings
+from app.core.download import check_unsupported_url, normalize_url
+from app.core.clipboard_service import get_video_urls_to_add
+from app.core.task_queue import (
+    SUPPORTED_EXTENSIONS,
+    is_issue_task,
+    is_invalid_url_task,
+    prepare_url_task_row,
+    metadata_updates_from_info,
+    extract_filesize_from_info,
+    resolve_task_path,
+    resolve_task_title,
+    dir_for_path,
+)
 from app.ui.components.download_task_model import (
     DownloadTaskModel,
     COL_IDX, COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
     _STATUS_PENDING, _STATUS_RUNNING, _STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED,
 )
-from app.ui.dialogs import ClipboardSettingsDialog, ClearOldTasksDialog
+from app.ui.dialogs import (
+    AddLinkDialog,
+    ClipboardSettingsDialog,
+    ClearOldTasksDialog,
+    DownloadSettingsDialog,
+)
+from app.ui.utils import format_size
 
 INFOBAR_MS_SUCCESS = 3000
 INFOBAR_MS_ERROR   = 5000
 INFOBAR_MS_WARNING = 4000
 INFOBAR_MS_INFO    = 3000
-
-VIDEO_EXTENSIONS = {
-    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts", "mpeg", "mpg",
-}
-AUDIO_EXTENSIONS = {
-    "mp3", "aac", "wav", "flac", "ogg", "m4a", "opus", "wma",
-}
-SUPPORTED_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 
 # ── Main widget ────────────────────────────────────────────────────────────────
@@ -63,6 +69,7 @@ class TaskDownloadInterface(QWidget):
     download_requested = pyqtSignal(list)   # list[dict] of queued tasks
     cancel_requested   = pyqtSignal()        # user pressed Cancel
     finished           = pyqtSignal(str, str)
+    message_requested  = pyqtSignal(str, str, str, int, object)  # level, title, message, duration, position
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -79,6 +86,7 @@ class TaskDownloadInterface(QWidget):
         self._clipboard_last_text = QApplication.clipboard().text()
         # Track running MetaFetchWorker instances so they can be cancelled on close
         self._info_workers: list = []
+        self._icon_workers: list = []
 
         self._init_ui()
 
@@ -273,39 +281,63 @@ class TaskDownloadInterface(QWidget):
             self._clipboard_interval = dlg.get_interval()
             self._clipboard_url_filter: str = dlg.get_filter()
             self._clipboard_timer.setInterval(self._clipboard_interval)
-            InfoBar.success(
+            self.message_requested.emit(
+                "success",
                 self.tr("Settings saved"),
                 self.tr("Interval: {}  |  Filter: {}").format(
                     f"{self._clipboard_interval} ms",
                     self._clipboard_url_filter or self.tr("all URLs"),
                 ),
-                duration=INFOBAR_MS_SUCCESS,
-                parent=self,
+                INFOBAR_MS_SUCCESS,
+                None,
             )
 
     def _poll_clipboard(self) -> None:
-        """Called on each timer tick; adds any new URL found in the clipboard."""
+        """Called on each timer tick; adds new video URLs from clipboard (no playlist/profile, no duplicates)."""
         text = QApplication.clipboard().text().strip()
         if not text or text == self._clipboard_last_text:
             return
         self._clipboard_last_text = text
-        if not text.startswith(("http://", "https://")):
-            return
-        # Apply optional domain filter
+        existing = self._get_existing_task_urls()
         url_filter: str = getattr(self, "_clipboard_url_filter", "")
-        if url_filter:
-            allowed = [d.strip().lower() for d in url_filter.split(",") if d.strip()]
-            if not any(d in text.lower() for d in allowed):
-                return
-        self._add_url_task(text)
-        InfoBar.info(
-            self.tr("URL detected"),
-            self.tr("Added from clipboard: {}").format(
-                text[:60] + ("\u2026" if len(text) > 60 else "")
-            ),
-            duration=INFOBAR_MS_INFO,
-            parent=self,
+        to_add = get_video_urls_to_add(text, existing, domain_filter=url_filter)
+        if not to_add:
+            return
+        added = 0
+        for url in to_add:
+            self._analyze_and_add_url(url)
+            added += 1
+        self.message_requested.emit(
+            "info",
+            self.tr("URL(s) from clipboard"),
+            self.tr("Added {} link(s) to the queue.").format(added),
+            INFOBAR_MS_INFO,
+            None,
         )
+
+    def _get_existing_task_urls(self) -> set[str]:
+        """Return set of all task URLs in the model (for duplicate check)."""
+        out = set()
+        for i in range(self.model.rowCount()):
+            task = self.model.get_task(i)
+            if task:
+                u = task.get("url") or ""
+                if u:
+                    out.add(u)
+        return out
+
+    def _remove_issue_tasks(self, include_failed_metadata: bool = True) -> int:
+        """Remove issue rows (invalid URLs; optionally failed metadata). Returns count removed."""
+        to_remove = []
+        for i in range(self.model.rowCount()):
+            t = self.model.get_task(i)
+            if is_invalid_url_task(t):
+                to_remove.append(i)
+            elif include_failed_metadata and is_issue_task(t):
+                to_remove.append(i)
+        if to_remove:
+            self.model.remove_selected(to_remove)
+        return len(to_remove)
 
     def _on_subtitle_optimization_changed(self, checked: bool) -> None:
         """When 字幕校正 is checked, allow enhance settings; when unchecked, disable them."""
@@ -326,6 +358,42 @@ class TaskDownloadInterface(QWidget):
     def _add_url_task(self, url: str) -> None:
         self._analyze_and_add_url(url)
 
+    def _paste_clipboard_urls(self, text: str) -> None:
+        """Parse clipboard text into video-only URLs (no playlist/profile), skip duplicates, add to queue."""
+        existing = self._get_existing_task_urls()
+        url_filter: str = getattr(self, "_clipboard_url_filter", "")
+        to_add = get_video_urls_to_add(text, existing, domain_filter=url_filter)
+        if not to_add:
+            self.message_requested.emit(
+                "warning",
+                self.tr("Paste from clipboard"),
+                self.tr(
+                    "No new video links to add. Only single-video URLs are allowed; "
+                    "playlists and profiles are skipped. Duplicates are ignored."
+                ),
+                INFOBAR_MS_WARNING,
+                None,
+            )
+            return
+        for url in to_add:
+            self._analyze_and_add_url(url)
+        if len(to_add) == 1:
+            self.message_requested.emit(
+                "info",
+                self.tr("Link added"),
+                self.tr("Added 1 link to the queue."),
+                INFOBAR_MS_INFO,
+                None,
+            )
+        else:
+            self.message_requested.emit(
+                "info",
+                self.tr("Links added"),
+                self.tr("Added {} links to the queue.").format(len(to_add)),
+                INFOBAR_MS_INFO,
+                None,
+            )
+
     def _on_enhance_configure(self) -> None:
         from app.ui.dialogs.enhance_setting_dialog import EnhanceSettingDialog
         dlg = EnhanceSettingDialog(self)
@@ -335,83 +403,83 @@ class TaskDownloadInterface(QWidget):
         self.model.clear()
         self.status_label.setText(self.tr("Queue cleared"))
 
+    def _refresh_host_icon_for_url(self, url: str) -> None:
+        """Refresh the host column for the row with this URL (after icon cache updated)."""
+        row = self.model.find_url(url)
+        if row >= 0:
+            idx = self.model.index(row, COL_HOST)
+            self.model.dataChanged.emit(idx, idx, [Qt.DecorationRole])
+
+    def _emit_message(self, level: str, title: str, message: str, duration: int = INFOBAR_MS_INFO, position=None) -> None:
+        """Emit message_requested with level, title, message, duration, position."""
+        self.message_requested.emit(level, title, message, duration, position)
+
     def _on_add_link(self) -> None:
-        dlg = _AddLinkDialog(self)
+        dlg = AddLinkDialog(self)
         if dlg.exec_():
             url = dlg.get_url()
             if url:
                 self._analyze_and_add_url(url)
 
     def _analyze_and_add_url(self, url: str) -> None:
-        """Validate, normalize, add row immediately, then fetch video info in background."""
+        """Validate URL, normalize, add row, then fetch metadata and icon in background."""
         url = url.strip()
         if not url.startswith(("http://", "https://")):
-            InfoBar.warning(
-                self.tr("Invalid URL"),
-                self.tr("Only http/https URLs are supported."),
-                duration=INFOBAR_MS_WARNING, parent=self,
+            self._emit_message(
+                "warning", self.tr("Invalid URL"),
+                self.tr("Only http/https URLs are supported."), INFOBAR_MS_WARNING,
             )
             return
         errmsg = check_unsupported_url(url)
         if errmsg:
-            InfoBar.warning(
-                self.tr("Unsupported URL"), self.tr(errmsg),
-                duration=INFOBAR_MS_WARNING, parent=self,
-            )
+            self._emit_message("warning", self.tr("Unsupported URL"), self.tr(errmsg), INFOBAR_MS_WARNING)
             return
         canonical, note = normalize_url(url)
         if note:
-            InfoBar.info(
-                self.tr("URL rewritten"), self.tr(note),
-                duration=INFOBAR_MS_INFO, parent=self,
-            )
-        # Duplicate check (after normalisation so variants map to the same URL)
+            self._emit_message("info", self.tr("URL rewritten"), self.tr(note), INFOBAR_MS_INFO)
         existing = self.model.find_url(canonical)
         if existing != -1:
             self.task_table.selectRow(existing)
-            InfoBar.warning(
-                self.tr("Duplicate URL"),
+            self._emit_message(
+                "warning", self.tr("Duplicate URL"),
                 self.tr("This URL is already in the queue (row {}).").format(existing + 1),
-                duration=INFOBAR_MS_WARNING, parent=self,
+                INFOBAR_MS_WARNING,
             )
             return
-        platform = detect_platform(canonical)
-        host = platform if platform != "Unknown" else ""
-        if not host:
-            from urllib.parse import urlparse
-            try:
-                host = urlparse(canonical).netloc.replace("www.", "")
-            except Exception:
-                host = ""
-        # Add row immediately with URL as placeholder title
-        title_placeholder = canonical[:60] + ("…" if len(canonical) > 60 else "")
+        row_data = prepare_url_task_row(canonical, path="")
         row_idx = self.model.add_task(
-            title=title_placeholder, host=host, fmt="", path="", url=canonical
+            title=row_data["title"],
+            host=row_data["host"],
+            fmt=row_data["format"],
+            path=row_data["path"],
+            url=row_data["url"],
         )
-        self.status_label.setText(self.tr(f"Analyzing: {host or canonical}…"))
-        # Spawn background worker to fetch real title + uploader
+        self.status_label.setText(self.tr(f"Analyzing: {row_data['host'] or canonical}…"))
         cookies = load_settings().get("cookies_file", "")
         worker = MetaFetchWorker(url=canonical, cookies_file=cookies, parent=self)
 
         def _on_data(info: dict, r=row_idx) -> None:
-            title = info.get("title") or info.get("fulltitle") or ""
-            uploader = (
-                info.get("uploader") or info.get("channel")
-                or info.get("artist") or ""
-            )
-            if title:
-                self.model.update_task(r, title=title)
+            updates = metadata_updates_from_info(info)
+            if updates.get("title"):
+                self.model.update_task(r, title=updates["title"])
             task = self.model.get_task(r)
-            if uploader and task and not task.get("host"):
-                self.model.update_task(r, host=uploader)
+            if updates.get("uploader") and task and not task.get("host"):
+                self.model.update_task(r, host=updates["uploader"])
+            fs = extract_filesize_from_info(info)
+            if fs is not None and fs > 0:
+                self.model.update_task(r, size=format_size(fs))
 
         def _on_finished(success: bool, msg: str, r=row_idx, w=worker) -> None:
+            if not success:
+                row_to_remove = self.model.find_url(canonical)
+                if row_to_remove >= 0:
+                    self.model.remove_selected([row_to_remove])
+                if w in self._info_workers:
+                    self._info_workers.remove(w)
+                return
             task = self.model.get_task(r)
             short = (task or {}).get("title", canonical)[:50]
-            self.status_label.setText(
-                self.tr(f"Ready: {short}") if success
-                else self.tr(f"Added (unverified): {short}")
-            )
+            self.status_label.setText(self.tr(f"Ready: {short}"))
             if w in self._info_workers:
                 self._info_workers.remove(w)
 
@@ -420,11 +488,19 @@ class TaskDownloadInterface(QWidget):
         self._info_workers.append(worker)
         worker.start()
 
+        icon_worker = HostIconFetchWorker(canonical, parent=self)
+        icon_worker.icon_fetched.connect(self._refresh_host_icon_for_url)
+        def _icon_done():
+            if icon_worker in self._icon_workers:
+                self._icon_workers.remove(icon_worker)
+        icon_worker.finished.connect(_icon_done)
+        self._icon_workers.append(icon_worker)
+        icon_worker.start()
+
     # ── Save Folder / Download Settings ───────────────────────────────────
 
     def _on_save_folder_clicked(self) -> None:
         from PyQt5.QtWidgets import QFileDialog
-        from app.config.store import load_settings, save_settings
         settings = load_settings()
         current = settings.get("download_path", "")
         folder = QFileDialog.getExistingDirectory(
@@ -434,11 +510,10 @@ class TaskDownloadInterface(QWidget):
             settings["download_path"] = folder
             save_settings(settings)
             self.status_label.setText(self.tr("Save folder: {}").format(folder))
-            InfoBar.success(
-                self.tr("Folder saved"),
+            self._emit_message(
+                "success", self.tr("Folder saved"),
                 self.tr("Downloads will be saved to: {}").format(folder),
-                duration=INFOBAR_MS_SUCCESS,
-                parent=self,
+                INFOBAR_MS_SUCCESS,
             )
 
     def _on_download_settings(self) -> None:
@@ -449,11 +524,24 @@ class TaskDownloadInterface(QWidget):
 
     def _on_download_clicked(self) -> None:
         if self.model.rowCount() == 0:
-            InfoBar.warning(
+            self.message_requested.emit(
+                "warning",
                 self.tr("Warning"), self.tr("Add at least one file or URL first."),
-                duration=INFOBAR_MS_WARNING, parent=self,
+                INFOBAR_MS_WARNING,
+                None,
             )
             return
+
+        # Auto-remove issue links (invalid URLs, failed metadata) before starting
+        removed = self._remove_issue_tasks()
+        if removed:
+            self.message_requested.emit(
+                "info",
+                self.tr("Invalid links removed"),
+                self.tr("Removed {} invalid or failed link(s) from the queue.").format(removed),
+                INFOBAR_MS_INFO,
+                None,
+            )
 
         # If there are finished/failed rows, prompt to clear them first
         _FINISHED = {_STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED}
@@ -474,10 +562,12 @@ class TaskDownloadInterface(QWidget):
             and t.get("status") == _STATUS_PENDING
         ]
         if not tasks_to_run:
-            InfoBar.warning(
+            self.message_requested.emit(
+                "warning",
                 self.tr("Nothing to download"),
                 self.tr("No pending tasks. Add new URLs or clear completed ones first."),
-                duration=INFOBAR_MS_WARNING, parent=self,
+                INFOBAR_MS_WARNING,
+                None,
             )
             return
 
@@ -486,14 +576,16 @@ class TaskDownloadInterface(QWidget):
         self.cancel_button.show()
         self.progress_bar.setValue(0)
         self.status_label.setText(self.tr("Starting download…"))
-        InfoBar.info(
+        self.message_requested.emit(
+            "info",
             self.tr("Download started"),
             self.tr("Queued {} task(s){}.")
             .format(
                 len(tasks_to_run),
                 self.tr(" with Enhance") if self._enhance_enabled else "",
             ),
-            duration=INFOBAR_MS_INFO, parent=self,
+            INFOBAR_MS_INFO,
+            None,
         )
         self.download_requested.emit(tasks_to_run)
 
@@ -503,9 +595,11 @@ class TaskDownloadInterface(QWidget):
         self.cancel_button.hide()
         self.progress_bar.setValue(0)
         self.status_label.setText(self.tr("Cancelled"))
-        InfoBar.warning(
+        self.message_requested.emit(
+            "warning",
             self.tr("Cancelled"), self.tr("Download cancelled."),
-            duration=INFOBAR_MS_WARNING, parent=self,
+            INFOBAR_MS_WARNING,
+            None,
         )
         self.cancel_requested.emit()
 
@@ -532,30 +626,32 @@ class TaskDownloadInterface(QWidget):
         self.status_label.setText(self.tr("Done"))
         if video_path or output_path:
             self.finished.emit(video_path, output_path)
-        InfoBar.success(
+        self.message_requested.emit(
+            "success",
             self.tr("Done"), self.tr("All downloads complete."),
-            duration=INFOBAR_MS_SUCCESS,
-            position=InfoBarPosition.BOTTOM,
-            parent=self.parent() or self,
+            INFOBAR_MS_SUCCESS,
+            InfoBarPosition.BOTTOM,
         )
 
     def on_error(self, error: str) -> None:
         self.start_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.error()
-        InfoBar.error(
+        self.message_requested.emit(
+            "error",
             self.tr("Error"), self.tr(error),
-            duration=INFOBAR_MS_ERROR, parent=self,
+            INFOBAR_MS_ERROR,
+            None,
         )
 
     # ── Public task API ────────────────────────────────────────────────────
 
     def set_task(self, task: dict) -> None:
-        title = task.get("title") or os.path.basename(task.get("file_path", "Unknown"))
-        host  = task.get("host", "")
-        fmt   = task.get("format", "")
-        path  = task.get("file_path") or task.get("path", "")
-        url   = task.get("url") or path
+        title = resolve_task_title(task)
+        host = task.get("host", "")
+        fmt = task.get("format", "")
+        path = resolve_task_path(task.get("file_path"), task.get("path"))
+        url = task.get("url") or path
         self.model.add_task(title=title, host=host, fmt=fmt, path=path, url=url)
 
     def add_url(self, url: str) -> None:
@@ -569,19 +665,21 @@ class TaskDownloadInterface(QWidget):
     def dropEvent(self, event: QDropEvent) -> None:
         added = 0
         for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if not os.path.isfile(path):
+            path_str = url.toLocalFile()
+            if not path_str:
                 continue
-            ext = os.path.splitext(path)[1][1:].lower()
+            path = Path(path_str)
+            if not path.is_file():
+                continue
+            ext = path.suffix.lstrip(".").lower()
             if ext in SUPPORTED_EXTENSIONS:
-                title = os.path.basename(path)
-                self.model.add_task(title=title, host="Local", fmt=ext, path=path)
+                self.model.add_task(title=path.name, host="Local", fmt=ext, path=str(path))
                 added += 1
             else:
-                InfoBar.warning(
-                    self.tr(f"Skipped: .{ext}"),
+                self._emit_message(
+                    "warning", self.tr(f"Skipped: .{ext}"),
                     self.tr("Unsupported format — drop video/audio files only."),
-                    duration=INFOBAR_MS_WARNING, parent=self,
+                    INFOBAR_MS_WARNING,
                 )
         if added:
             self.status_label.setText(self.tr(f"Added {added} file(s) via drag & drop"))
@@ -640,13 +738,11 @@ class TaskDownloadInterface(QWidget):
                 ))
 
         if first_path:
-            folder = os.path.dirname(first_path) if os.path.isfile(first_path) else first_path
-            if os.path.isdir(folder):
+            folder = dir_for_path(first_path)
+            if folder is not None:
                 menu.addAction(Action(
                     FIF.FOLDER, self.tr("Open Folder"),
-                    triggered=lambda _, f=folder: QDesktopServices.openUrl(
-                        QUrl.fromLocalFile(f)
-                    ),
+                    triggered=lambda f=folder: QDesktopServices.openUrl(QUrl.fromLocalFile(str(f))),
                 ))
 
         menu.addSeparator()
@@ -685,7 +781,7 @@ class TaskDownloadInterface(QWidget):
         if clipboard_is_url:
             menu.addAction(Action(
                 FIF.PASTE, self.tr("Paste from Clipboard"),
-                triggered=lambda: self._analyze_and_add_url(clipboard_url),
+                triggered=lambda: self._paste_clipboard_urls(clipboard_url),
             ))
         menu.addSeparator()
 
@@ -746,7 +842,7 @@ class TaskDownloadInterface(QWidget):
         elif event.key() == Qt.Key_V and event.modifiers() & Qt.ControlModifier:  # type: ignore
             text = QApplication.clipboard().text().strip()
             if text:
-                self._analyze_and_add_url(text)
+                self._paste_clipboard_urls(text)
             event.accept()
         else:
             super().keyPressEvent(event)
@@ -757,33 +853,11 @@ class TaskDownloadInterface(QWidget):
                 w.quit()
                 w.wait(500)
         self._info_workers.clear()
+        for w in list(self._icon_workers):
+            if w.isRunning():
+                w.quit()
+                w.wait(500)
+        self._icon_workers.clear()
         super().closeEvent(event)
 
 
-# ── Add Link dialog ────────────────────────────────────────────────────────────
-
-class _AddLinkDialog(MessageBoxBase):
-    """Single-URL input dialog with auto-filled clipboard and Analyze & Add action."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.viewLayout.addWidget(BodyLabel(self.tr("Add Video URL"), self))
-
-        self._input = LineEdit(self)
-        self._input.setPlaceholderText(self.tr("https://youtube.com/watch?v=…"))
-        self._input.setFixedHeight(40)
-        self._input.setMinimumWidth(460)
-        self._input.setClearButtonEnabled(True)
-
-        # Pre-fill with clipboard if it looks like a URL
-        clip = QApplication.clipboard().text().strip()
-        if clip.startswith(("http://", "https://")):
-            self._input.setText(clip)
-
-        self.viewLayout.addWidget(self._input)
-        self.viewLayout.setSpacing(10)
-        self.yesButton.setText(self.tr("Analyze & Add"))
-        self.cancelButton.setText(self.tr("Cancel"))
-
-    def get_url(self) -> str:
-        return self._input.text().strip()

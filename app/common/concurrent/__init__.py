@@ -18,6 +18,7 @@ from app.common.concurrent.download_worker import DownloadWorker
 from app.common.concurrent.enhance_worker import EnhancePostProcessWorker
 from app.common.concurrent.scraper_workers import (
     CommentsWorker,
+    HostIconFetchWorker,
     MetaFetchWorker,
     PlaylistFetchWorker,
     SearchWorker,
@@ -28,6 +29,7 @@ __all__ = [
     "DownloadWorker",
     "EnhancePostProcessWorker",
     "MetaFetchWorker",
+    "HostIconFetchWorker",
     "CommentsWorker",
     "SearchWorker",
     "PlaylistFetchWorker",

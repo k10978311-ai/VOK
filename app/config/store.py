@@ -51,7 +51,7 @@ _DEFAULTS = {
     "concurrent_downloads": 2,
     "concurrent_fragments": 4,
     "cookies_file": "",
-    "default_start_page": "Download",
+    "default_start_page": "Home",
     "sound_alert_on_complete": True,
     "sound_alert_on_error": True,
     "auto_update_on_start": True,

@@ -71,3 +71,10 @@ def get_cover_folder() -> Path:
     path = get_config_dir() / "Cover"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def get_host_icons_cache_dir() -> Path:
+    """Cache directory for host/favicon icons (e.g. AppData/host_icons)."""
+    path = get_config_dir() / "host_icons"
+    path.mkdir(parents=True, exist_ok=True)
+    return path

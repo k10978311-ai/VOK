@@ -4,7 +4,7 @@ from PyQt5.QtGui import QIcon
 from qfluentwidgets import FluentIcon
 from qfluentwidgets.common.icon import toQIcon
 
-from app.common.paths import ICONS_DIR
+from app.common.paths import ICONS_DIR, get_host_icons_cache_dir
 
 DOWNLOAD_FORMATS = [
     "Best (video+audio)",
@@ -32,7 +32,9 @@ PLATFORM_ICON_NAMES = {
 
 
 def host_icon(platform: str) -> QIcon:
-    """Return QIcon for platform from resources/icons, or FluentIcon.GLOBE as fallback."""
+    """Return QIcon for platform: built-in names, then host icon cache, else globe fallback."""
+    if not platform:
+        return toQIcon(FluentIcon.GLOBE)
     name = PLATFORM_ICON_NAMES.get(platform)
     if name:
         path = ICONS_DIR / name
@@ -40,4 +42,15 @@ def host_icon(platform: str) -> QIcon:
             icon = QIcon(str(path))
             if not icon.isNull():
                 return icon
+    # Use cached host icon (from extract_host service) if present
+    try:
+        from app.core.extract_host import get_cached_icon_path
+        cache_dir = get_host_icons_cache_dir()
+        cached = get_cached_icon_path(platform, cache_dir)
+        if cached is not None:
+            icon = QIcon(str(cached))
+            if not icon.isNull():
+                return icon
+    except Exception:
+        pass
     return toQIcon(FluentIcon.GLOBE)

@@ -24,7 +24,6 @@ from ..common import resource
 from .views import (
     AboutInterface,
     BatchEnhanceInterface,
-    DownloaderView,
     HomeInterface,
     SettingsView,
     TaskInterface,
@@ -56,7 +55,6 @@ class MainWindow(MSFluentWindow):
     def _create_views(self):
         """Create and hold references to all sub-interfaces."""
         self.home = HomeInterface(self)
-        self.downloader = DownloaderView(self)
         self.taskInterface = TaskInterface(self)
         self.batchEnhance = BatchEnhanceInterface(self)
         self.about = AboutInterface(self)
@@ -66,7 +64,6 @@ class MainWindow(MSFluentWindow):
     def _setup_navigation(self):
         """Register sub-interfaces with the navigation panel."""
         self.addSubInterface(self.home, FluentIcon.HOME, "Home")
-        self.addSubInterface(self.downloader, FluentIcon.DOWNLOAD, "Download")
         self.addSubInterface(self.batchEnhance, FluentIcon.ZOOM_IN, "Batch En..")
         self.addSubInterface(self.taskInterface, Icon.CLOUD_DOWNLOAD, "Tasks")
         self.addSubInterface(
@@ -88,11 +85,10 @@ class MainWindow(MSFluentWindow):
         default_widgets = {
             "Dashboard": self.home,
             "Home": self.home,
-            "Download": self.downloader,
             "Settings": self.settings,
             "About": self.about,
         }
-        widget = default_widgets.get(page, self.downloader)
+        widget = default_widgets.get(page, self.home)
         self.switchTo(widget)
 
     def _init_window(self):
@@ -140,7 +136,7 @@ class MainWindow(MSFluentWindow):
                 self.show()
                 self.raise_()
         else:
-            self.switchTo(self.downloader)
+            self.switchTo(self.home)
             self.show()
             self.raise_()
 
