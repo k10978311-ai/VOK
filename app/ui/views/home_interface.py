@@ -72,6 +72,7 @@ class HomeInterface(QWidget):
         self._active_jobs: set[str] = set()
         self._job_to_row: dict[str, int] = {}   # job_id → task model row index
         self._job_errors: set[str] = set()       # job_ids that ended with error
+        self._stopped = False                        # True after user presses Stop
         self._row_to_db_id: dict[int, str] = {}  # row_idx → QueueTask.id
         self._queue_service: QueueTaskService | None = None  # cached for persistence
         self._icon_workers: list = []  # HostIconFetchWorker instances
@@ -472,6 +473,7 @@ class HomeInterface(QWidget):
         self._manager.set_concurrent_fragments(cfg["concurrent_fragments"])
 
         enqueued = 0
+        self._stopped = False
         for task in tasks:
             url = task.get("url") or task.get("title", "")
             if not url:
@@ -497,6 +499,7 @@ class HomeInterface(QWidget):
 
     def _on_cancel_all(self) -> None:
         """Cancel all running jobs, mark rows as Canceled, and reset UI."""
+        self._stopped = True
         for job_id, row in list(self._job_to_row.items()):
             self._db_update_status(row, QUEUE_STATUS_CANCELED)
             self.task_interface.update_task_progress(row, 0, status=QUEUE_STATUS_CANCELED)
@@ -534,6 +537,8 @@ class HomeInterface(QWidget):
     def _on_download_job_finished(
         self, job_id: str, success: bool, message: str, filepath: str, size_bytes: int
     ) -> None:
+        if self._stopped:
+            return
         self._active_jobs.discard(job_id)
         row = self._job_to_row.pop(job_id, None)
 
