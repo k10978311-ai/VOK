@@ -10,6 +10,7 @@ from ..utils.uuid_utils import UUIDUtils
 # Mirror of the status strings used by the UI / DownloadTaskModel
 QUEUE_STATUS_PENDING    = "Pending"
 QUEUE_STATUS_RUNNING    = "Downloading"
+QUEUE_STATUS_ENHANCING  = "Enhancing"
 QUEUE_STATUS_DONE       = "Done"
 QUEUE_STATUS_ERROR      = "Error"
 QUEUE_STATUS_CANCELED   = "Canceled"

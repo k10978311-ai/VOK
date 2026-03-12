@@ -3,6 +3,7 @@
 
 import os
 import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 from app.core.ffmpeg.cache import get_ffmpeg_path
@@ -62,9 +63,11 @@ def run_enhance(
     ])
 
     try:
+        _flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         proc = subprocess.run(
             cmd, capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=600,
+            creationflags=_flags,
         )
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "")[-800:]

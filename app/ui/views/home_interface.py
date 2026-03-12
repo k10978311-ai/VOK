@@ -11,6 +11,7 @@ from app.common.database.entity import QueueTask
 from app.common.database.entity.queue_task import (
     QUEUE_STATUS_PENDING,
     QUEUE_STATUS_RUNNING,
+    QUEUE_STATUS_ENHANCING,
     QUEUE_STATUS_DONE,
     QUEUE_STATUS_ERROR,
     QUEUE_STATUS_CANCELED,
@@ -85,8 +86,8 @@ class HomeInterface(QWidget):
         # Tasks tab download button → start jobs
         self.task_interface.download_requested.connect(self._on_tasks_download_requested)
 
-        # Tasks tab cancel button → cancel all running jobs
-        self.task_interface.cancel_requested.connect(self._on_cancel_all)
+        # Tasks tab stop button → stop all running jobs
+        self.task_interface.stop_requested.connect(self._on_cancel_all)
 
         # Clear all (with confirmation) → clean DB then clear model
         self.task_interface.queue_clear_confirmed.connect(self._on_queue_clear_confirmed)
@@ -551,6 +552,10 @@ class HomeInterface(QWidget):
                 from app.common.concurrent import EnhancePostProcessWorker
                 from app.common.enhance_helpers import options_from_settings, build_output_path
                 self._enhance_pending.add(job_id)
+                # Show "Enhancing" status immediately so user sees progress
+                self.task_interface.update_task_progress(
+                    row, 100, status=QUEUE_STATUS_ENHANCING
+                )
                 opts = options_from_settings()
                 out_path = build_output_path(filepath)
                 worker = EnhancePostProcessWorker(filepath, out_path, opts, job_id=job_id, parent=self)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 
 from app.config import load_settings
 from app.core.ffmpeg.cache import get_ffmpeg_path
@@ -50,10 +51,12 @@ def probe_video_meta(path: str) -> tuple[str, float]:
         ffprobe = os.path.join(os.path.dirname(ffmpeg), "ffprobe")
         if not os.path.isfile(ffprobe):
             ffprobe = "ffprobe"
+        _flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         result = subprocess.run(
             [ffprobe, "-v", "quiet", "-print_format", "json",
              "-show_streams", "-show_format", path],
             capture_output=True, text=True, timeout=10,
+            creationflags=_flags,
         )
         data = json.loads(result.stdout)
         duration = float(data.get("format", {}).get("duration", -1))

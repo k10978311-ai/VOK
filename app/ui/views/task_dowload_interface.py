@@ -19,7 +19,6 @@ from qfluentwidgets import (
     BodyLabel,
     MessageBox,
     ProgressBar,
-    PushButton,
     RoundMenu,
     TableView,
 )
@@ -43,7 +42,7 @@ from app.core.task_queue import (
 )
 from app.ui.components.download_task_model import (
     DownloadTaskModel,
-    COL_IDX, COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
+    COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
     _STATUS_PENDING, _STATUS_RUNNING, _STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED,
 )
 from app.ui.components.task_command_bar import TaskCommandBar
@@ -67,7 +66,7 @@ class TaskDownloadInterface(QWidget):
     """Download queue: command bar + task table + progress bar."""
 
     download_requested = pyqtSignal(list)   # list[dict] of queued tasks
-    cancel_requested   = pyqtSignal()        # user pressed Cancel
+    stop_requested     = pyqtSignal()         # user pressed Stop
     finished           = pyqtSignal(str, str)
     message_requested  = pyqtSignal(str, str, str, int, object)  # level, title, message, duration, position
     queue_clear_confirmed = pyqtSignal()     # user confirmed Clear all → parent clears DB then model
@@ -104,7 +103,6 @@ class TaskDownloadInterface(QWidget):
         self._command_bar.clipboard_observer_btn.setChecked(
             bool(load_settings().get("clipboard_sync_enabled", False))
         )
-        self._on_clipboard_observer_toggled(self._command_bar.clipboard_observer_btn.isChecked())
         # Restore enhance enabled state from config
         self._command_bar.enhance_btn.setChecked(
             bool(load_settings().get("download_with_enhance_enabled", False))
@@ -115,7 +113,7 @@ class TaskDownloadInterface(QWidget):
     def _setup_toolbar(self) -> None:
         self._command_bar = TaskCommandBar(self)
         self._command_bar.download_settings_clicked.connect(self._on_download_settings)
-        self._command_bar.clipboard_observer_clicked.connect(self._on_clipboard_observer_clicked)
+        self._command_bar.clipboard_observer_toggled.connect(self._on_clipboard_observer_toggled)
         self._command_bar.clipboard_settings_clicked.connect(self._on_clipboard_observer_settings)
         self._command_bar.open_save_folder_clicked.connect(self._on_open_save_folder)
         self._command_bar.enhance_enabled_changed.connect(self._on_enhance_enabled_changed)
@@ -123,6 +121,7 @@ class TaskDownloadInterface(QWidget):
         self._command_bar.add_link_clicked.connect(self._on_add_link)
         self._command_bar.clear_clicked.connect(self._on_clear)
         self._command_bar.start_download_clicked.connect(self._on_download_clicked)
+        self._command_bar.stop_clicked.connect(self._on_stop)
         self.main_layout.addWidget(self._command_bar)
 
     # ── Table ──────────────────────────────────────────────────────────────
@@ -142,9 +141,7 @@ class TaskDownloadInterface(QWidget):
         hdr = self.task_table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeToContents)
         hdr.setSectionResizeMode(COL_TITLE, QHeaderView.Stretch)
-        hdr.setSectionResizeMode(COL_IDX,   QHeaderView.Fixed)
         hdr.setSectionResizeMode(COL_HOST,  QHeaderView.Fixed)
-        self.task_table.setColumnWidth(COL_IDX,  40)
         self.task_table.setColumnWidth(COL_HOST, 80)
 
         v_hdr = self.task_table.verticalHeader()
@@ -169,22 +166,13 @@ class TaskDownloadInterface(QWidget):
         self.status_label.setMinimumWidth(120)
         self.status_label.setAlignment(Qt.AlignCenter)  # type: ignore
 
-        self.cancel_button = PushButton(self.tr("Cancel"), self, icon=FIF.CANCEL)
-        self.cancel_button.hide()
-        self.cancel_button.clicked.connect(self._on_cancel)
-
         footer.addWidget(self.progress_bar, 1)
         footer.addWidget(self.status_label)
-        footer.addWidget(self.cancel_button)
         self.main_layout.addLayout(footer)
 
     # ── Toolbar actions ────────────────────────────────────────────────────
 
     # ── Clipboard observer ─────────────────────────────────────────────────
-
-    def _on_clipboard_observer_clicked(self) -> None:
-        """Toggle clipboard observer; sync settings button enabled state."""
-        self._on_clipboard_observer_toggled(self._command_bar.clipboard_observer_btn.isChecked())
 
     def _on_clipboard_observer_toggled(self, checked: bool) -> None:
         """Start or stop monitoring the clipboard for URLs; persist enabled state."""
@@ -193,11 +181,9 @@ class TaskDownloadInterface(QWidget):
             self._clipboard_last_text = QApplication.clipboard().text()
             self._clipboard_timer.setInterval(self._clipboard_interval)
             self._clipboard_timer.start()
-            self._command_bar.clipboard_settings_btn.setEnabled(True)
             self.status_label.setText(self.tr("Clipboard Observer: ON"))
         else:
             self._clipboard_timer.stop()
-            self._command_bar.clipboard_settings_btn.setEnabled(False)
             self.status_label.setText(self.tr("Clipboard Observer: OFF"))
         s = load_settings()
         s["clipboard_sync_enabled"] = checked
@@ -444,25 +430,7 @@ class TaskDownloadInterface(QWidget):
 
     # ── Save Folder / Download Settings ───────────────────────────────────
 
-    def _on_save_folder_clicked(self) -> None:
-        from PyQt5.QtWidgets import QFileDialog
-        settings = load_settings()
-        current = settings.get("download_path", "")
-        folder = QFileDialog.getExistingDirectory(
-            self, self.tr("Select Save Folder"), current or ""
-        )
-        if folder:
-            settings["download_path"] = folder
-            save_settings(settings)
-            self.status_label.setText(self.tr("Save folder: {}").format(folder))
-            self._emit_message(
-                "success", self.tr("Folder saved"),
-                self.tr("Downloads will be saved to: {}").format(folder),
-                INFOBAR_MS_SUCCESS,
-            )
-
     def _on_download_settings(self) -> None:
-        from app.ui.dialogs.download_settings_dialog import DownloadSettingsDialog
         DownloadSettingsDialog(self).exec_()
 
     # ── Download / Cancel ──────────────────────────────────────────────────
@@ -516,8 +484,7 @@ class TaskDownloadInterface(QWidget):
             )
             return
 
-        self._command_bar.start_button.setEnabled(False)
-        self.cancel_button.show()
+        self._command_bar.set_downloading(True)
         self.progress_bar.setValue(0)
         self.status_label.setText(self.tr("Starting download…"))
         self.message_requested.emit(
@@ -532,19 +499,18 @@ class TaskDownloadInterface(QWidget):
         )
         self.download_requested.emit(tasks_to_run)
 
-    def _on_cancel(self) -> None:
+    def _on_stop(self) -> None:
         # Update own UI immediately; parent handles manager cancellation
-        self._command_bar.start_button.setEnabled(True)
-        self.cancel_button.hide()
+        self._command_bar.set_downloading(False)
         self.progress_bar.setValue(0)
-        self.status_label.setText(self.tr("Cancelled"))
+        self.status_label.setText(self.tr("Stopped"))
         self.message_requested.emit(
             "warning",
-            self.tr("Cancelled"), self.tr("Download cancelled."),
+            self.tr("Stopped"), self.tr("Download stopped."),
             INFOBAR_MS_WARNING,
             None,
         )
-        self.cancel_requested.emit()
+        self.stop_requested.emit()
 
     # ── Public progress API ────────────────────────────────────────────────
 
@@ -563,8 +529,7 @@ class TaskDownloadInterface(QWidget):
         self.model.update_task(row_idx, **kwargs)
 
     def on_finished(self, video_path: str = "", output_path: str = "") -> None:
-        self._command_bar.start_button.setEnabled(True)
-        self.cancel_button.hide()
+        self._command_bar.set_downloading(False)
         self.progress_bar.setValue(100)
         self.status_label.setText(self.tr("Done"))
         if video_path or output_path:
@@ -577,8 +542,7 @@ class TaskDownloadInterface(QWidget):
         )
 
     def on_error(self, error: str) -> None:
-        self._command_bar.start_button.setEnabled(True)
-        self.cancel_button.hide()
+        self._command_bar.set_downloading(False)
         self.progress_bar.error()
         self.message_requested.emit(
             "error",
@@ -598,7 +562,7 @@ class TaskDownloadInterface(QWidget):
         self.model.add_task(title=title, host=host, fmt=fmt, path=path, url=url)
 
     def add_url(self, url: str) -> None:
-        self._add_url_task(url)
+        self._analyze_and_add_url(url)
 
     def get_enhance_enabled(self) -> bool:
         """Return True if Download with Enhance is checked (run enhance after each download)."""

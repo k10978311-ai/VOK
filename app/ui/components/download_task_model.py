@@ -5,20 +5,20 @@ from typing import Any, Dict, List, Optional
 from PyQt5.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 # Table column indices
-COL_IDX      = 0
-COL_TITLE    = 1
-COL_HOST     = 2
-COL_STATUS   = 3
-COL_SIZE     = 4
-COL_PROGRESS = 5
+COL_TITLE    = 0
+COL_HOST     = 1
+COL_STATUS   = 2
+COL_SIZE     = 3
+COL_PROGRESS = 4
 
-_COL_HEADERS = ["#", "Title", "Host", "Status", "Size", "Progress %"]
+_COL_HEADERS = ["Title", "Host", "Status", "Size", "Progress %"]
 
-_STATUS_PENDING  = "Pending"
-_STATUS_RUNNING  = "Downloading"
-_STATUS_DONE     = "Done"
-_STATUS_ERROR    = "Error"
-_STATUS_CANCELED = "Canceled"
+_STATUS_PENDING   = "Pending"
+_STATUS_RUNNING   = "Downloading"
+_STATUS_ENHANCING = "Enhancing"
+_STATUS_DONE      = "Done"
+_STATUS_ERROR     = "Error"
+_STATUS_CANCELED  = "Canceled"
 
 
 class DownloadTaskModel(QAbstractTableModel):
@@ -48,8 +48,6 @@ class DownloadTaskModel(QAbstractTableModel):
                 return host_icon(row.get("host", ""))
 
         if role == Qt.DisplayRole:  # type: ignore
-            if col == COL_IDX:
-                return str(index.row() + 1)
             if col == COL_TITLE:
                 return row.get("title", "")
             if col == COL_HOST:
@@ -63,7 +61,7 @@ class DownloadTaskModel(QAbstractTableModel):
                 return f"{p}%" if isinstance(p, int) else "—"
 
         if role == Qt.TextAlignmentRole:  # type: ignore
-            if col in (COL_IDX, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS):
+            if col in (COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS):
                 return Qt.AlignCenter  # type: ignore
         return None
 

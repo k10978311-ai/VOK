@@ -14,7 +14,7 @@ from .download_table_card import DownloadTableCard
 from .DownloadPowerSettingCard import DownloadConfigCard
 from .download_task_model import (
     DownloadTaskModel,
-    COL_IDX, COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
+    COL_TITLE, COL_HOST, COL_STATUS, COL_SIZE, COL_PROGRESS,
     _STATUS_PENDING, _STATUS_RUNNING, _STATUS_DONE, _STATUS_ERROR, _STATUS_CANCELED,
 )
 from .status_table import StatusTable

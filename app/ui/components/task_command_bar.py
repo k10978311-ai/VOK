@@ -13,19 +13,60 @@ from qfluentwidgets import FluentIcon as FIF
 class TaskCommandBar(QWidget):
     """Command bar widget with actions and Start Download button. Emits signals for parent handling."""
 
-    download_settings_clicked = pyqtSignal()
-    clipboard_observer_clicked = pyqtSignal()
+    download_settings_clicked  = pyqtSignal()
+    clipboard_observer_toggled = pyqtSignal(bool)   # True = ON, False = OFF
     clipboard_settings_clicked = pyqtSignal()
-    enhance_enabled_changed = pyqtSignal(bool)
-    enhance_settings_clicked = pyqtSignal()
-    add_link_clicked = pyqtSignal()
-    clear_clicked = pyqtSignal()
-    start_download_clicked = pyqtSignal()
-    open_save_folder_clicked = pyqtSignal()
+    enhance_enabled_changed    = pyqtSignal(bool)
+    enhance_settings_clicked   = pyqtSignal()
+    add_link_clicked           = pyqtSignal()
+    clear_clicked              = pyqtSignal()
+    start_download_clicked     = pyqtSignal()
+    stop_clicked               = pyqtSignal()
+    open_save_folder_clicked   = pyqtSignal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._build_ui()
+
+    # ── Stylesheet helpers ────────────────────────────────────────────────
+
+    @staticmethod
+    def _checkable_ss(accent: str) -> str:
+        """Accent-colored background when checked, neutral when unchecked."""
+        return f"""
+            QToolButton {{
+                border-radius: 4px;
+                padding: 6px 10px;
+                background-color: rgba(128, 128, 128, 0.2);
+            }}
+            QToolButton:hover {{
+                background-color: rgba(128, 128, 128, 0.35);
+            }}
+            QToolButton:checked {{
+                background-color: {accent};
+            }}
+            QToolButton:checked:hover {{
+                background-color: {accent};
+            }}
+        """
+
+    @staticmethod
+    def _plain_btn_ss() -> str:
+        """Plain ToolButton with a visually faded disabled state."""
+        return """
+            QToolButton {
+                border-radius: 4px;
+                padding: 6px 10px;
+                background-color: rgba(128, 128, 128, 0.2);
+            }
+            QToolButton:hover {
+                background-color: rgba(128, 128, 128, 0.35);
+            }
+            QToolButton:disabled {
+                background-color: rgba(128, 128, 128, 0.08);
+                color: rgba(255, 255, 255, 0.3);
+            }
+        """
 
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
@@ -54,27 +95,11 @@ class TaskCommandBar(QWidget):
         # Clipboard Observer (checkable)
         self.clipboard_observer_btn = ToolButton(FIF.PASTE, self)
         self.clipboard_observer_btn.setCheckable(True)
-        self.clipboard_observer_btn.clicked.connect(self.clipboard_observer_clicked.emit)
-        self.clipboard_observer_btn.setToolTip(self.tr("Enable or Disable Clipboard Monitor"))
+        self.clipboard_observer_btn.toggled.connect(self._on_clipboard_observer_toggled)
+        self.clipboard_observer_btn.setToolTip(self.tr("Enable or disable Clipboard Monitor"))
         self.clipboard_observer_btn.setToolTipDuration(3000)
         self.clipboard_observer_btn.installEventFilter(ToolTipFilter(self.clipboard_observer_btn))
-        _clip_ss = f"""
-            QToolButton {{
-                border-radius: 4px;
-                padding: 6px 10px;
-                background-color: rgba(128, 128, 128, 0.2);
-            }}
-            QToolButton:hover {{
-                background-color: rgba(128, 128, 128, 0.35);
-            }}
-            QToolButton:checked {{
-                background-color: {_btn_accent};
-            }}
-            QToolButton:checked:hover {{
-                background-color: {_btn_accent};
-            }}
-        """
-        self.clipboard_observer_btn.setStyleSheet(_clip_ss)
+        self.clipboard_observer_btn.setStyleSheet(self._checkable_ss(_btn_accent))
         self.command_bar.addWidget(self.clipboard_observer_btn)
 
         # Clipboard Settings
@@ -86,55 +111,29 @@ class TaskCommandBar(QWidget):
         self.clipboard_settings_btn.setToolTipDuration(3000)
         self.clipboard_settings_btn.installEventFilter(ToolTipFilter(self.clipboard_settings_btn))
         self.clipboard_settings_btn.setEnabled(False)
-        self.clipboard_settings_btn.setStyleSheet("""
-            QToolButton {
-                border-radius: 4px;
-                padding: 6px 10px;
-                background-color: rgba(128, 128, 128, 0.2);
-            }
-            QToolButton:hover {
-                background-color: rgba(128, 128, 128, 0.35);
-            }
-        """)
+        self.clipboard_settings_btn.setStyleSheet(self._plain_btn_ss())
         self.command_bar.addWidget(self.clipboard_settings_btn)
         self.command_bar.addSeparator()
 
         # Enhance (checkable) — download then run enhance post-process
         self.enhance_btn = ToolButton(FIF.ZOOM_IN, self)
         self.enhance_btn.setCheckable(True)
-        self.enhance_btn.clicked.connect(
-            lambda: self.enhance_enabled_changed.emit(self.enhance_btn.isChecked())
-        )
+        self.enhance_btn.toggled.connect(self._on_enhance_toggled)
         self.enhance_btn.setToolTip(self.tr("Download with Enhance — apply logo, flip, color, speed after download"))
         self.enhance_btn.setToolTipDuration(3000)
         self.enhance_btn.installEventFilter(ToolTipFilter(self.enhance_btn))
-        # Background when unchecked; theme color when checked (enabled)
-        self.enhance_btn.setStyleSheet(f"""
-            QToolButton {{
-                border-radius: 4px;
-                padding: 6px 10px;
-                background-color: rgba(128, 128, 128, 0.2);
-            }}
-            QToolButton:hover {{
-                background-color: rgba(128, 128, 128, 0.35);
-            }}
-            QToolButton:checked {{
-                background-color: {_btn_accent};
-            }}
-            QToolButton:checked:hover {{
-                background-color: {_btn_accent};
-            }}
-        """)
+        self.enhance_btn.setStyleSheet(self._checkable_ss(_btn_accent))
         self.command_bar.addWidget(self.enhance_btn)
 
         # Enhance Settings
-        enhance_settings_action = Action(
+        self.enhance_settings_action = Action(
             FIF.EDIT,
             self.tr("Enhance Settings"),
             triggered=self.enhance_settings_clicked.emit,
         )
-        enhance_settings_action.setToolTip(self.tr("Configure enhance options (logo, flip, color, speed)"))
-        self.command_bar.addAction(enhance_settings_action)
+        self.enhance_settings_action.setToolTip(self.tr("Configure enhance options (logo, flip, color, speed)"))
+        self.enhance_settings_action.setEnabled(False)  # disabled until enhance is ON
+        self.command_bar.addAction(self.enhance_settings_action)
 
         self.command_bar.addSeparator()
 
@@ -163,8 +162,35 @@ class TaskCommandBar(QWidget):
             Action(FIF.DELETE, self.tr("Clear"), triggered=self.clear_clicked.emit)
         )
 
-        # Start Download
+        # Start / Stop Download
+        self._downloading = False
         self.start_button = PrimaryPushButton(self.tr("Start Download"), self, icon=FIF.DOWNLOAD)
         self.start_button.setFixedHeight(34)
-        self.start_button.clicked.connect(self.start_download_clicked.emit)
+        self.start_button.clicked.connect(self._on_start_stop_clicked)
         layout.addWidget(self.start_button)
+
+    def _on_clipboard_observer_toggled(self, checked: bool) -> None:
+        """Sync clipboard settings button enabled state and emit toggled signal."""
+        self.clipboard_settings_btn.setEnabled(checked)
+        self.clipboard_observer_toggled.emit(checked)
+
+    def _on_enhance_toggled(self, checked: bool) -> None:
+        """Sync enhance settings action enabled state and emit enhance signal."""
+        self.enhance_settings_action.setEnabled(checked)
+        self.enhance_enabled_changed.emit(checked)
+
+    def _on_start_stop_clicked(self) -> None:
+        if self._downloading:
+            self.stop_clicked.emit()
+        else:
+            self.start_download_clicked.emit()
+
+    def set_downloading(self, active: bool) -> None:
+        """Toggle the button between Start Download and Stop states."""
+        self._downloading = active
+        if active:
+            self.start_button.setText(self.tr("Stop"))
+            self.start_button.setIcon(FIF.CANCEL)
+        else:
+            self.start_button.setText(self.tr("Start Download"))
+            self.start_button.setIcon(FIF.DOWNLOAD)

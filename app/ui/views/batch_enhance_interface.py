@@ -21,6 +21,7 @@ from qfluentwidgets import (
     CaptionLabel,
     CommandBar,
     FluentIcon as FIF,
+    LargeTitleLabel,
     RoundMenu,
     ToolButton,
 )
@@ -56,14 +57,16 @@ COL_DURATION = 4
 COL_ETA      = 5
 COL_STATUS   = 6
 COL_PROGRESS = 7
+
+
 class BatchEnhanceInterface(BaseView):
     """Batch Enhance: add videos → configure settings → run enhancement queue."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Batch Enhance")
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(0)
+        self._layout.setContentsMargins(24, 20, 24, 0)
+        self._layout.setSpacing(8)
 
         # Video list: (display_name, abs_path, size_bytes, resolution, duration_secs)
         self._videos: list[tuple[str, str, int, str, float]] = []
@@ -79,9 +82,24 @@ class BatchEnhanceInterface(BaseView):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        self._build_header(self._layout)
         self._build_command_bar(self._layout)
         self._build_table(self._layout)
         self._build_footer(self._layout)
+
+    # ── Page Header ───────────────────────────────────────────────────────────
+
+    def _build_header(self, parent_layout: QVBoxLayout) -> None:
+        title = LargeTitleLabel(self.tr("Batch Enhance"), self)
+        parent_layout.addWidget(title)
+
+        subtitle = BodyLabel(
+            self.tr("Add videos, configure settings, and run enhancement in batch."),
+            self,
+        )
+        subtitle.setStyleSheet("color: gray;")
+        parent_layout.addWidget(subtitle)
+        parent_layout.addSpacing(4)
 
     # ── CommandBar ────────────────────────────────────────────────────────────
 
@@ -146,7 +164,7 @@ class BatchEnhanceInterface(BaseView):
     def _build_footer(self, parent_layout: QVBoxLayout) -> None:
         footer = QHBoxLayout()
         footer.setSpacing(12)
-        footer.setContentsMargins(12, 4, 12, 8)
+        footer.setContentsMargins(0, 4, 0, 12)
 
         self.status_label = BodyLabel(self.tr("0 video(s)"))
         footer.addWidget(self.status_label)
