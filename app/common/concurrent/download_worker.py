@@ -1,6 +1,4 @@
 # coding: utf-8
-"""DownloadWorker — runs yt-dlp in a QThread with progress and log signals."""
-
 import os
 from pathlib import Path
 from typing import Callable
@@ -68,18 +66,9 @@ def _unique_path(path: str) -> str:
 
 
 class DownloadWorker(QThread):
-    """Runs yt-dlp in a background thread.
-
-    Signals
-    -------
-    log_line      str          — one line of console output
-    progress      float        — 0.0 – 1.0 download progress
-    finished_signal (bool, str) — (success, message)
-    """
 
     log_line = pyqtSignal(str)
     progress = pyqtSignal(float)
-    # (pct 0–1, speed_str, eta_str, current_size_str, total_size_str)
     progress_detail = pyqtSignal(float, str, str, str, str)
     finished_signal = pyqtSignal(bool, str, str, int)  # success, message, filepath, size_bytes (-1 if unknown)
 
@@ -144,11 +133,11 @@ class DownloadWorker(QThread):
         out_tmpl = os.path.join(self.output_dir, "%(title)s.%(ext)s")
 
         format_map = {
-            "Best (video+audio)": "bv*+ba/b",
-            "HD 1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-            "HD 720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
-            "4K / 2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
-            "Best video": "bv",
+            "Best (video+audio)": "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b",
+            "HD 1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+            "HD 720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]",
+            "4K / 2160p": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+            "Best video": "bv[ext=mp4]/bv",
             "Best audio": "ba",
             "Video (mp4)": "bv[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
             "Audio (mp3)": "ba[ext=m4a]/ba/b",
@@ -258,8 +247,6 @@ class DownloadWorker(QThread):
             "retries": 5,
             "fragment_retries": 5,
             "concurrent_fragment_downloads": self.concurrent_fragments,
-            # Sanitize filenames for Windows to prevent shutil.move errors with special chars
-            # (dots/parens in titles confuse yt-dlp's fragment temp-dir naming on Windows)
             "windowsfilenames": True,
         }
 
@@ -280,6 +267,11 @@ class DownloadWorker(QThread):
         if is_mp3:
             opts["postprocessors"] = [
                 {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
+            ]
+        elif not is_photo:
+            # Ensure video downloads end up as MP4 (convert WebM etc. to MP4)
+            opts["postprocessors"] = [
+                {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
             ]
 
         if is_photo:
