@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QHBoxLayout
 
 from qfluentwidgets import SegmentedWidget
 
@@ -59,6 +60,18 @@ class TaskInterface(Interface):
     # ── UI construction ────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        # Replace the default single title widget with a title + badge row.
+        self.vBoxLayout.removeWidget(self.titleLabel)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
+
+        self._active_badge = ActiveBadge(self.view)
+        title_row.addWidget(self.titleLabel, 0, Qt.AlignVCenter)
+        title_row.addWidget(self._active_badge, 0, Qt.AlignVCenter)
+        title_row.addStretch(1)
+        self.vBoxLayout.insertLayout(0, title_row)
+
         # Views are built before the pivot so the pivot lambdas can close over them.
         self._dl_view       = DownloadingTaskView(self)
         self._enhance_view  = EnhancingTaskView(self)
@@ -79,8 +92,6 @@ class TaskInterface(Interface):
         self.pivot.addItem(self._TAB_FINISHED, self.tr("Finished"),    lambda: self.stackedWidget.setCurrentWidget(self._finished_view))
         self.pivot.addItem(self._TAB_FAILED,   self.tr("Failed"),      lambda: self.stackedWidget.setCurrentWidget(self._failed_view))
         self.pivot.setCurrentItem(self._TAB_DL)
-
-        self._active_badge = ActiveBadge(self)
 
         self.setViewportMargins(0, 140, 0, 10)
         self.vBoxLayout.addWidget(self.pivot, 0, Qt.AlignLeft)

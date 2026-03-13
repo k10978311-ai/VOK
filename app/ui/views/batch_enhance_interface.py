@@ -21,8 +21,8 @@ from qfluentwidgets import (
     CaptionLabel,
     CommandBar,
     FluentIcon as FIF,
-    LargeTitleLabel,
     RoundMenu,
+    TitleLabel,
     ToolButton,
 )
 
@@ -90,7 +90,7 @@ class BatchEnhanceInterface(BaseView):
     # ── Page Header ───────────────────────────────────────────────────────────
 
     def _build_header(self, parent_layout: QVBoxLayout) -> None:
-        title = LargeTitleLabel(self.tr("Batch Enhance"), self)
+        title = TitleLabel(self.tr("Batch Enhance"), self)
         parent_layout.addWidget(title)
 
         subtitle = BodyLabel(
