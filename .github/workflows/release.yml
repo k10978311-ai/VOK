@@ -1,3 +1,6 @@
+# Release workflow: creates draft → builds (Windows/macOS/Linux) → uploads assets → publishes.
+# To get build files (zip, DMG, installer) on a release, use a NEW tag and run this workflow
+# (Actions → Release → Run workflow with e.g. v1.0.1). Do not publish the release manually first.
 name: Release
 
 on:
@@ -204,6 +207,9 @@ jobs:
     needs: [prepare, build-windows, build-macos, build-linux-x86_64]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Publish release
         run: gh release edit "${{ needs.prepare.outputs.tag }}" --draft=false
         env:

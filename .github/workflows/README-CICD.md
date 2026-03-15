@@ -57,4 +57,4 @@ The workflows assume build output already exists but **do not run the actual bui
 ## How to Test
 
 - **Build workflows:** Run manually via **Actions → [workflow] → Run workflow**.
-- **Release:** Create a new release **as a draft** with the desired tag; `release.yml` runs on draft creation, builds all platforms, uploads assets to the draft, then publishes the release. Alternatively run **Actions → Release → Run workflow** and provide the tag (e.g. `v1.0.0`); the workflow creates a draft, builds, uploads, then publishes.
+- **Release (with build files):** To get zip/DMG/installer assets on a release, **do not** publish from the UI first. Either: (1) Run **Actions → Release → Run workflow** and enter a **new** tag (e.g. `v1.0.1`) — the workflow creates a draft, builds all platforms, uploads assets, then publishes; or (2) Create a new release in the UI **as draft** with a new tag — the workflow runs on draft creation, builds, uploads, then publishes. Releases published before the workflow runs (e.g. v1.0.0) are immutable and cannot get assets added later.
