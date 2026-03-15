@@ -27,9 +27,20 @@ jobs:
 
       - name: Create draft release
         if: github.event_name == 'workflow_dispatch'
-        run: gh release create "${{ inputs.tag_name }}" --draft --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          if gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null; then
+            is_draft=$(gh release view "$TAG" --json isDraft -q .isDraft)
+            if [ "$is_draft" = "false" ]; then
+              echo "::error::Release $TAG is already published (immutable). Use a new tag (e.g. v1.0.1) or create a draft release manually for this tag."
+              exit 1
+            fi
+            echo "Draft release for $TAG already exists, reusing it."
+          else
+            gh release create "$TAG" --draft --generate-notes
+          fi
 
       - name: Set tag output
         id: set_tag
