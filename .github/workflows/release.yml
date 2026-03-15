@@ -211,6 +211,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Publish release
-        run: gh release edit "${{ needs.prepare.outputs.tag }}" --draft=false
+        run: gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
