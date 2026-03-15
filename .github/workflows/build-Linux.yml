@@ -3,57 +3,47 @@ name: Build Linux
 on:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-ubuntu:
-    strategy:
-      matrix:
-        architecture: [x86_64, arm64]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-xinerama0 libxcb-xfixes0 libgl1 libglib2.0-0 \
+            libdbus-1-3 libxkbcommon-x11-0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Configure Git for private repo access
-        if: ${{ secrets.GH_PAT != '' }}
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
-
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: uv sync --extra dev
 
       - name: Build with PyInstaller
         run: |
-          VERSION=$(python3 -c "from app.common.setting import VERSION; print(VERSION)")
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          
+          QT_QPA_PLATFORM=offscreen uv run pyinstaller vok.spec --clean --noconfirm
 
-      - name: Download and extract tools
+      - name: Create tar archive
         run: |
-          # Setup variables
-          ZIP_URL="https://github.com/VOK-KH/VOK-Get/releases/download/v0.2.0/Linux-${{ matrix.architecture }}.zip"
-          DEST_DIR="dist/VOK-Get/_internal/tools"
+          tar -czf "VOK-v${{ env.VERSION }}-Linux-x86_64.tar.gz" -C dist VOK
 
-          # Download tools
-          echo "Downloading package from $ZIP_URL..."
-          curl -L "$ZIP_URL" -o "/tmp/package.zip"
-
-          # unzip
-          echo "Extracting package..."
-          unzip -o "/tmp/package.zip" -d "$DEST_DIR"
-
-          # delete zip
-          rm "/tmp/package.zip"
-
-          echo "Download and extraction complete!"
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VOK-Get-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}
-          path: dist/VOK-Get
+          name: VOK-v${{ env.VERSION }}-Linux-x86_64
+          path: VOK-v${{ env.VERSION }}-Linux-x86_64.tar.gz

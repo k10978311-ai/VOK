@@ -1,59 +1,35 @@
-name: Build macOS Apple
+name: Build macOS Apple Silicon
 
 on:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  build-macos-14-arm:
-    strategy:
-      fail-fast: false
-      matrix:
-        architecture: [arm64]
-    runs-on: macos-14
+  build-macos:
+    runs-on: macos-15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Configure Git for private repo access
-        if: ${{ secrets.GH_PAT != '' }}
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
-
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: uv sync --extra dev
 
-      - name: Build with Nuitka
+      - name: Build with PyInstaller
         run: |
-          VERSION=$(python3 -c "from app.common.setting import VERSION; print(VERSION)")
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          
-          chmod u+x "dist/VOK-Get.app/Contents/MacOS/VOK-Get"
-          rm -rf "dist/VOK-Get.build"
-
-      - name: Download and extract tools
-        run: |
-          # Setup variables
-          ZIP_URL="https://github.com/VOK-KH/VOK-Get/releases/download/v0.2.0/macOS-${{ matrix.architecture }}.zip"
-          DEST_DIR="dist/VOK-Get.app/Contents/MacOS/tools"
-
-          # Download tools
-          echo "Downloading package from $ZIP_URL..."
-          curl -L "$ZIP_URL" -o "/tmp/package.zip"
-
-          # unzip
-          echo "Extracting package..."
-          unzip -o "/tmp/package.zip" -d "$DEST_DIR"
-
-          # delete zip
-          rm "/tmp/package.zip"
-
-          echo "Download and extraction complete!"
+          uv run pyinstaller vok.spec --clean --noconfirm
+          codesign --force --deep --sign - dist/VOK.app 2>/dev/null || true
 
       - name: Create DMG
         run: |
@@ -62,13 +38,13 @@ jobs:
           attempt=0
           max_attempts=10
           while [ $attempt -lt $max_attempts ]; do
-              hdiutil create -srcfolder "dist/" -volname "VOK-Get" -fs HFS+ \
+              hdiutil create -srcfolder "dist/" -volname "VOK" -fs HFS+ \
                   -fsargs "-c c=64,a=16,e=16" -format UDZO -size 400m \
-                  "VOK-Get-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg" && break
+                  "VOK-v${{ env.VERSION }}-macOS-AppleSilicon.dmg" && break
 
               attempt=$((attempt + 1))
               echo "Attempt $attempt failed, retrying..."
-              sleep 1  # 等待 1 秒后重试
+              sleep 1
           done
 
           if [ $attempt -eq $max_attempts ]; then
@@ -76,9 +52,9 @@ jobs:
               exit 1
           fi
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VOK-Get-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}
-          path: VOK-Get-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}.dmg
+          name: VOK-v${{ env.VERSION }}-macOS-AppleSilicon
+          path: VOK-v${{ env.VERSION }}-macOS-AppleSilicon.dmg
 
