@@ -1,6 +1,3 @@
-# Release workflow: creates draft → builds (Windows/macOS/Linux) → uploads assets → publishes.
-# To get build files (zip, DMG, installer) on a release, use a NEW tag and run this workflow
-# (Actions → Release → Run workflow with e.g. v1.0.1). Do not publish the release manually first.
 name: Release
 
 on:
@@ -207,20 +204,10 @@ jobs:
     needs: [prepare, build-windows, build-macos, build-linux-x86_64]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Publish release
+        run: gh release edit "${{ needs.prepare.outputs.tag }}" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-          REPO: ${{ github.repository }}
-        run: |
-          release_id=$(curl -sS -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}" | jq -r '.id')
-          if [ -z "$release_id" ] || [ "$release_id" = "null" ]; then
-            echo "::error::Could not find release for tag $TAG"
-            exit 1
-          fi
-          curl -sS -X PATCH -H "Authorization: token $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"draft":false}' \
-            "https://api.github.com/repos/${REPO}/releases/${release_id}"
-          echo "Published release $TAG"
