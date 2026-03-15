@@ -25,23 +25,25 @@ jobs:
         run: uv sync --extra dev
 
       - name: Build with PyInstaller
+        id: version
         shell: pwsh
         run: |
           $VERSION = (Select-String -Path "pyproject.toml" -Pattern '^version\s*=\s*"(.*)"').Matches[0].Groups[1].Value
           Write-Host "VERSION=$VERSION"
           echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+          "version=$VERSION" >> $env:GITHUB_OUTPUT
           uv run pyinstaller vok.spec --clean --noconfirm
 
       - name: Create zip archive
         shell: pwsh
         run: |
-          $zipFile = "VOK-v${{ env.VERSION }}-Windows-x86_64.zip"
+          $zipFile = "VOK-v$env:VERSION-Windows-x86_64.zip"
           Compress-Archive -Path "dist\VOK\*" -DestinationPath $zipFile
           Write-Output "Created $zipFile"
 
       - name: Upload portable zip
         uses: actions/upload-artifact@v7
         with:
-          name: VOK-v${{ env.VERSION }}-Windows-x86_64
-          path: VOK-v${{ env.VERSION }}-Windows-x86_64.zip
+          name: VOK-v${{ steps.version.outputs.version }}-Windows-x86_64
+          path: VOK-v${{ steps.version.outputs.version }}-Windows-x86_64.zip
 

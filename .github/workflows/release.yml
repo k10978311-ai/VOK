@@ -31,6 +31,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag_name }}
         run: |
+          TAG="$(printf '%s' "$TAG" | xargs)"
+          if [ -z "$TAG" ]; then
+            echo "::error::tag_name cannot be empty"
+            exit 1
+          fi
+
           if gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null; then
             is_draft=$(gh release view "$TAG" --json isDraft -q .isDraft)
             if [ "$is_draft" = "false" ]; then
@@ -46,10 +52,18 @@ jobs:
         id: set_tag
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            TAG_RAW="${{ github.event.release.tag_name }}"
           else
-            echo "tag=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+            TAG_RAW="${{ inputs.tag_name }}"
           fi
+
+          TAG="$(printf '%s' "$TAG_RAW" | xargs)"
+          if [ -z "$TAG" ]; then
+            echo "::error::Resolved release tag is empty"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   build-windows:
     needs: [prepare]
@@ -84,7 +98,7 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (Test-Path $iscc) {
-            & $iscc "resources\installer\script_inno.iss" "/DMyAppVersion=${{ env.VERSION }}"
+            & $iscc "resources\installer\script_inno.iss" "/DMyAppVersion=$env:VERSION"
           } else {
             Write-Host "Inno Setup not found at $iscc, skipping installer"
             exit 1
@@ -93,7 +107,7 @@ jobs:
       - name: Create zip archive
         shell: pwsh
         run: |
-          $zipFile = "VOK-v${{ env.VERSION }}-Windows-x86_64.zip"
+          $zipFile = "VOK-v$env:VERSION-Windows-x86_64.zip"
           Compress-Archive -Path "dist\VOK\*" -DestinationPath $zipFile
           Write-Output "Created $zipFile"
 
@@ -103,9 +117,9 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ needs.prepare.outputs.tag }}"
-          gh release upload $tag "VOK-v${{ env.VERSION }}-Windows-x86_64.zip" --clobber
-          if (Test-Path "dist\VOK-v${{ env.VERSION }}-Windows-x86_64-Setup.exe") {
-            gh release upload $tag "dist\VOK-v${{ env.VERSION }}-Windows-x86_64-Setup.exe" --clobber
+          gh release upload $tag "VOK-v$env:VERSION-Windows-x86_64.zip" --clobber
+          if (Test-Path "dist\VOK-v$env:VERSION-Windows-x86_64-Setup.exe") {
+            gh release upload $tag "dist\VOK-v$env:VERSION-Windows-x86_64-Setup.exe" --clobber
           }
 
   build-macos:
@@ -142,7 +156,7 @@ jobs:
           while [ $attempt -lt $max_attempts ]; do
               hdiutil create -srcfolder "dist/" -volname "VOK" -fs HFS+ \
                   -fsargs "-c c=64,a=16,e=16" -format UDZO -size 400m \
-                  "VOK-v${{ env.VERSION }}-macOS-arm64.dmg" && break
+                  "VOK-v${VERSION}-macOS-arm64.dmg" && break
 
               attempt=$((attempt + 1))
               echo "Attempt $attempt failed, retrying..."
@@ -157,7 +171,7 @@ jobs:
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.prepare.outputs.tag }}" "VOK-v${{ env.VERSION }}-macOS-arm64.dmg" --clobber
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" "VOK-v${VERSION}-macOS-arm64.dmg" --clobber
 
   build-linux-x86_64:
     needs: [prepare]
@@ -193,12 +207,12 @@ jobs:
 
       - name: Create zip archive
         run: |
-          cd dist && zip -r "../VOK-v${{ env.VERSION }}-Linux-x86_64.zip" VOK
+          cd dist && zip -r "../VOK-v${VERSION}-Linux-x86_64.zip" VOK
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.prepare.outputs.tag }}" "VOK-v${{ env.VERSION }}-Linux-x86_64.zip" --clobber
+        run: gh release upload "${{ needs.prepare.outputs.tag }}" "VOK-v${VERSION}-Linux-x86_64.zip" --clobber
 
   publish-release:
     needs: [prepare, build-windows, build-macos, build-linux-x86_64]

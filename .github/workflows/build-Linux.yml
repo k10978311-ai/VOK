@@ -33,17 +33,19 @@ jobs:
         run: uv sync --extra dev
 
       - name: Build with PyInstaller
+        id: version
         run: |
           VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
           QT_QPA_PLATFORM=offscreen uv run pyinstaller vok.spec --clean --noconfirm
 
       - name: Create tar archive
         run: |
-          tar -czf "VOK-v${{ env.VERSION }}-Linux-x86_64.tar.gz" -C dist VOK
+          tar -czf "VOK-v${VERSION}-Linux-x86_64.tar.gz" -C dist VOK
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: VOK-v${{ env.VERSION }}-Linux-x86_64
-          path: VOK-v${{ env.VERSION }}-Linux-x86_64.tar.gz
+          name: VOK-v${{ steps.version.outputs.version }}-Linux-x86_64
+          path: VOK-v${{ steps.version.outputs.version }}-Linux-x86_64.tar.gz

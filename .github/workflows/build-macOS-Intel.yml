@@ -25,9 +25,11 @@ jobs:
         run: uv sync --extra dev
 
       - name: Build with PyInstaller
+        id: version
         run: |
           VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
           uv run pyinstaller vok.spec --clean --noconfirm
           codesign --force --deep --sign - dist/VOK.app 2>/dev/null || true
 
@@ -36,11 +38,11 @@ jobs:
           ln -s /Applications dist/Applications
           hdiutil create -srcfolder "dist/" -volname "VOK" -fs HFS+ \
               -fsargs "-c c=64,a=16,e=16" -format UDZO -size 400m \
-              "VOK-v${{ env.VERSION }}-macOS-arm64.dmg"
+              "VOK-v${VERSION}-macOS-arm64.dmg"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: VOK-v${{ env.VERSION }}-macOS-arm64
-          path: VOK-v${{ env.VERSION }}-macOS-arm64.dmg
+          name: VOK-v${{ steps.version.outputs.version }}-macOS-arm64
+          path: VOK-v${{ steps.version.outputs.version }}-macOS-arm64.dmg
 
