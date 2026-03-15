@@ -19,6 +19,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Configure Git for private repo access
+        if: ${{ secrets.GH_PAT != '' }}
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GH_PAT }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
