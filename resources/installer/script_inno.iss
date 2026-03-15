@@ -10,7 +10,6 @@
 #define MyAppPublisher "VOK"
 #define MyAppURL "https://github.com/k10978311-ai/VOK-Get"
 #define MyAppExeName "VOK.exe"
-#define ProjectRoot AddBackslash(SourcePath) + "..\\..\\"
 
 [Setup]
 AppId={{D268B6A1-50E6-4A03-9099-3C955452D4F5}
@@ -25,9 +24,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-OutputDir={#ProjectRoot}dist
+OutputDir=..\..\dist
 OutputBaseFilename=VOK-v{#MyAppVersion}-Windows-x86_64-Setup
-SetupIconFile={#ProjectRoot}resources\icon.ico
+SetupIconFile=..\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -38,8 +37,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#ProjectRoot}dist\VOK\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#ProjectRoot}dist\VOK\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\VOK\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\VOK\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
